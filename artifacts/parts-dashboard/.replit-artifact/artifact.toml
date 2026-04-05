@@ -1,0 +1,31 @@
+kind = "data-app"
+previewPath = "/"
+title = "Parts Analysis Dashboard"
+version = "1.0.0"
+id = "artifacts/parts-dashboard"
+router = "path"
+
+[[integratedSkills]]
+name = "data-visualization"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26269
+
+[services.development]
+run = "pnpm --filter @workspace/parts-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/parts-dashboard", "run", "build" ]
+publicDir = "artifacts/parts-dashboard/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26269"
+BASE_PATH = "/"

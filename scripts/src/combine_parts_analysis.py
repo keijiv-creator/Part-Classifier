@@ -15,6 +15,8 @@ from datetime import datetime
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 
+import argparse
+
 NATMAN_BOOKINGS_DIR = os.path.join(ROOT_DIR, 'attached_assets')
 PYTHON_NATIONAL_DIR = os.path.join(ROOT_DIR, 'attached_assets')
 
@@ -556,7 +558,30 @@ def set_col_widths(ws, widths):
         ws.column_dimensions[get_column_letter(c)].width = w
 
 
-def main():
+def main(cli_args=None):
+    global NATMAN_ZIP, PYTHON_NAT_ZIP, OUTPUT_DIR, OUTPUT_FILE, QUOTE_SENT_CUTOFF_YEAR, FAI_THRESHOLD
+
+    parser = argparse.ArgumentParser(description='Parts Analysis')
+    parser.add_argument('--bookings-zip', help='Path to Natman Bookings zip')
+    parser.add_argument('--national-zip', help='Path to Python National zip')
+    parser.add_argument('--output-dir', help='Output directory')
+    parser.add_argument('--cutoff-year', type=int, help='Quote date cutoff year')
+    parser.add_argument('--fai-threshold', type=float, help='FAI threshold (0-1)')
+    parser.add_argument('--json-output', help='Path to write JSON summary')
+    args = parser.parse_args(cli_args)
+
+    if args.bookings_zip:
+        NATMAN_ZIP = args.bookings_zip
+    if args.national_zip:
+        PYTHON_NAT_ZIP = args.national_zip
+    if args.output_dir:
+        OUTPUT_DIR = args.output_dir
+        OUTPUT_FILE = os.path.join(OUTPUT_DIR, f'Parts_Analysis_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx')
+    if args.cutoff_year:
+        QUOTE_SENT_CUTOFF_YEAR = args.cutoff_year
+    if args.fai_threshold is not None:
+        FAI_THRESHOLD = args.fai_threshold
+
     start_time = time.time()
     print("=" * 60)
     print("  PARTS ANALYSIS — Combined Bookings + National Data")
@@ -565,14 +590,36 @@ def main():
     print("\n[1/6] Extracting data files...")
     extract_zips()
 
-    bookings_file = find_file(NATMAN_EXTRACT, 'Natman_Bookings_20260402.xlsx')
+    bookings_file = find_file(NATMAN_EXTRACT, 'Natman_Bookings_')
+    if bookings_file and not bookings_file.endswith('.xlsx'):
+        bookings_file = None
     if not bookings_file:
-        bookings_file = find_file(NATMAN_EXTRACT, 'Natman_Bookings_')
+        for root, dirs, files in os.walk(NATMAN_EXTRACT):
+            for f in files:
+                if f.endswith('.xlsx') and 'Booking' in f:
+                    bookings_file = os.path.join(root, f)
+                    break
     if not bookings_file:
-        print("  ERROR: Could not find Natman Bookings output file")
+        for root, dirs, files in os.walk(NATMAN_EXTRACT):
+            for f in files:
+                if f.endswith('.xlsx'):
+                    bookings_file = os.path.join(root, f)
+                    break
+    if not bookings_file:
+        print("  ERROR: Could not find Natman Bookings output file (.xlsx)")
         sys.exit(1)
 
     input_file = find_file(PYNAT_EXTRACT, 'National_QuoteData_')
+    if not input_file:
+        input_file = find_file(PYNAT_EXTRACT, 'QuoteData_')
+    if not input_file:
+        all_files = []
+        for root, dirs, files in os.walk(PYNAT_EXTRACT):
+            for f in files:
+                if f.endswith('.xlsx'):
+                    all_files.append(os.path.join(root, f))
+        if all_files:
+            input_file = all_files[0]
     if not input_file:
         print("  ERROR: Could not find National QuoteData input file")
         sys.exit(1)
@@ -743,6 +790,181 @@ def main():
     print(f"  DONE in {elapsed:.1f}s")
     print(f"  Output: {OUTPUT_FILE}")
     print(f"{'=' * 60}")
+
+    new_deals_data = []
+    for cr in unmatched_rows:
+        cust_part = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
+        lm = landmark.get(cust_part, {})
+        mapped_prob = str(cr.get('mapped_probability', '')).strip().upper()
+        if mapped_prob == 'NC':
+            calc_label = 'New Customer'
+        else:
+            calc_label = 'New Part'
+            p2_str = cr.get('mapped_pd_p2_time', '')
+            fod_raw = lm.get('first_order_date', '')
+            if fod_raw and p2_str:
+                try:
+                    fod = fod_raw if hasattr(fod_raw, 'strftime') else datetime.strptime(str(fod_raw), '%Y-%m-%d')
+                    p2_date = datetime.strptime(p2_str, '%Y-%m-%d') if isinstance(p2_str, str) else p2_str
+                    if p2_date and fod and p2_date > fod:
+                        calc_label = 'Repeat'
+                except (ValueError, TypeError):
+                    pass
+        new_deals_data.append({
+            'org_id': str(cr.get('org_id', '')),
+            'name': str(cr.get('name', '')),
+            'customer_part_id': str(cr.get('cust_part', '')),
+            'mapped_status': str(cr.get('mapped_status', '')),
+            'mapped_probability': str(cr.get('mapped_probability', '')),
+            'mapped_med_rev': float(cr.get('mapped_med_rev', 0) or 0),
+            'mapped_pd_p1_time': str(cr.get('mapped_pd_p1_time', '')),
+            'mapped_pd_p2_time': str(cr.get('mapped_pd_p2_time', '')),
+            'mapped_pd_p4_time': str(cr.get('mapped_pd_p4_time', '')),
+            'mapped_pd_p5_time': str(cr.get('mapped_pd_p5_time', '')),
+            'quote_number': str(cr.get('quote_number', '')),
+            'first_order_date': lm.get('first_order_date', '').strftime('%Y-%m-%d') if hasattr(lm.get('first_order_date', ''), 'strftime') else str(lm.get('first_order_date', '')),
+            'first_order_no': str(lm.get('first_order_no', '')),
+            'landmark_quote_no': str(lm.get('quote_no', '')),
+            'calc_label': calc_label,
+        })
+
+    pd_info_data = []
+    for cr in matched_rows:
+        pd_id = cr.get('pd_id', '')
+        dd = deal_details.get(pd_id, {})
+        pd_info_data.append({
+            'pd_id': pd_id,
+            'customer_part_id': str(cr.get('cust_part', '')),
+            'title': str(dd.get('title', '')),
+            'value': float(dd.get('value', 0) or 0),
+            'status': str(dd.get('status', '')),
+            'won_time': str(dd.get('won_time', '') or ''),
+            'org_name': str(dd.get('org_name', '')),
+            'org_id': str(dd.get('org_id', '')),
+            'stage_id': str(dd.get('stage_id', '')),
+            'label': str(dd.get('label', '')),
+            'platform_company': str(dd.get('platform_company', '')),
+            'deal_type': str(dd.get('deal_type', '')),
+            'mfg_type': str(dd.get('mfg_type', '')),
+            'industry': str(dd.get('industry', '')),
+            'quote_number': str(dd.get('quote_number', '') or ''),
+            'po_number': str(dd.get('po_number', '') or ''),
+        })
+
+    all_parts_data = []
+    for part in all_parts_sorted:
+        part_upper = part.strip().upper()
+        all_parts_data.append({
+            'customer_part_id': part,
+            'in_quote_data': part_upper in quote_parts,
+            'in_landmark': part_upper in landmark,
+            'has_pd_match': part_upper in pd_cache,
+        })
+
+    total_rev_new = sum(r['mapped_med_rev'] for r in new_deals_data)
+    total_rev_pd = sum(r['value'] for r in pd_info_data)
+    won_deals = [r for r in pd_info_data if r['status'] == 'won']
+    open_deals = [r for r in pd_info_data if r['status'] == 'open']
+
+    status_counts = {}
+    for r in pd_info_data:
+        s = r['status'] or 'unknown'
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    platform_counts = {}
+    platform_rev = {}
+    for r in pd_info_data:
+        p = r['platform_company'] or 'Unknown'
+        platform_counts[p] = platform_counts.get(p, 0) + 1
+        platform_rev[p] = platform_rev.get(p, 0) + r['value']
+
+    label_counts = {}
+    for r in pd_info_data:
+        lb = r['label'] or 'Unknown'
+        label_counts[lb] = label_counts.get(lb, 0) + 1
+
+    stage_counts = {}
+    for r in pd_info_data:
+        st = r['stage_id'] or 'Unknown'
+        stage_counts[st] = stage_counts.get(st, 0) + 1
+
+    industry_counts = {}
+    for r in pd_info_data:
+        ind = r['industry'] or 'Unknown'
+        if ind:
+            industry_counts[ind] = industry_counts.get(ind, 0) + 1
+
+    deal_type_counts = {}
+    for r in pd_info_data:
+        dt = r['deal_type'] or 'Unknown'
+        if dt:
+            deal_type_counts[dt] = deal_type_counts.get(dt, 0) + 1
+
+    new_status_counts = {}
+    for r in new_deals_data:
+        s = r['mapped_status'] or 'Unknown'
+        new_status_counts[s] = new_status_counts.get(s, 0) + 1
+
+    calc_label_counts = {}
+    for r in new_deals_data:
+        cl = r['calc_label'] or 'Unknown'
+        calc_label_counts[cl] = calc_label_counts.get(cl, 0) + 1
+
+    top_customers_new = {}
+    for r in new_deals_data:
+        nm = r['name'] or 'Unknown'
+        top_customers_new[nm] = top_customers_new.get(nm, 0) + r['mapped_med_rev']
+    top_customers_new = sorted(top_customers_new.items(), key=lambda x: x[1], reverse=True)[:15]
+
+    top_customers_pd = {}
+    for r in pd_info_data:
+        nm = r['org_name'] or 'Unknown'
+        top_customers_pd[nm] = top_customers_pd.get(nm, 0) + r['value']
+    top_customers_pd = sorted(top_customers_pd.items(), key=lambda x: x[1], reverse=True)[:15]
+
+    json_result = {
+        'output_file': OUTPUT_FILE,
+        'elapsed_seconds': round(elapsed, 1),
+        'summary': {
+            'total_unique_parts': len(all_parts_sorted),
+            'new_deals_count': len(new_deals_data),
+            'pd_info_count': len(pd_info_data),
+            'total_new_deals_revenue': round(total_rev_new, 2),
+            'total_pd_pipeline_value': round(total_rev_pd, 2),
+            'won_deals_count': len(won_deals),
+            'won_deals_value': round(sum(r['value'] for r in won_deals), 2),
+            'open_deals_count': len(open_deals),
+            'open_deals_value': round(sum(r['value'] for r in open_deals), 2),
+            'avg_deal_value_pd': round(total_rev_pd / len(pd_info_data), 2) if pd_info_data else 0,
+            'avg_deal_value_new': round(total_rev_new / len(new_deals_data), 2) if new_deals_data else 0,
+            'landmark_parts_count': len(landmark),
+            'pd_cache_entries': len(pd_cache),
+        },
+        'analytics': {
+            'pd_status_distribution': status_counts,
+            'platform_distribution': platform_counts,
+            'platform_revenue': {k: round(v, 2) for k, v in platform_rev.items()},
+            'label_distribution': label_counts,
+            'stage_distribution': stage_counts,
+            'industry_distribution': industry_counts,
+            'deal_type_distribution': deal_type_counts,
+            'new_deals_status_distribution': new_status_counts,
+            'calc_label_distribution': calc_label_counts,
+            'top_customers_new': [{'name': n, 'revenue': round(r, 2)} for n, r in top_customers_new],
+            'top_customers_pd': [{'name': n, 'value': round(r, 2)} for n, r in top_customers_pd],
+        },
+        'sheets': {
+            'all_unique_parts': all_parts_data,
+            'new_deals': new_deals_data,
+            'pd_info': pd_info_data,
+        }
+    }
+
+    if args.json_output:
+        with open(args.json_output, 'w') as jf:
+            json.dump(json_result, jf, default=str)
+        print(f"  JSON summary: {args.json_output}")
+
     return OUTPUT_FILE
 
 
