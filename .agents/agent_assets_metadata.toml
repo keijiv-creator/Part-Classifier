@@ -6,3 +6,9 @@ id = "ZxcdVK1Itd_V5FE4Te2pk"
 uri = "file://output/Parts_Analysis_20260405_215206.xlsx"
 type = "table"
 title = "Parts Analysis - Repeat vs New Parts"
+
+[[outputs]]
+id = "_38x4162WDJ_TCtqMLgrt"
+uri = "file://output/Parts_Analysis_20260405_220616.xlsx"
+type = "table"
+title = "Parts Analysis - Repeat vs New Parts (Updated)"

@@ -32,19 +32,54 @@ API_TOKEN = os.environ.get('PIPEDRIVE_API_KEY', '')
 BASE_URL = 'https://api.pipedrive.com/v1'
 
 PD_FIELDS = {
-    'deal_type':     'ed1ea84ddf0aeccf6d0b3d927026105878826510',
-    'mfg_type':      '47d2446f3ab01948599ee675f453635f85a20c9d',
-    'industry':      '6aea8f84232712fdf542c789b7d589c271da21fb',
-    'customer_part': 'bf83e3810120851228084c7f58f6fa40437c8915',
-    'part':          '6609b1b875bcedc0740cbe3aecfe48ef0b17c64f',
-    'p1_time':       '4a8eeb233bb88878360ec1d17676db77be8b3b88',
-    'p2_time':       'eeb93bef8e9e1d8b8f5d879cd9193f2f9545b693',
-    'p3_time':       '504c42fe1681d50c19a37c0204c28b0ade57a51a',
-    'p4_time':       'f7c63e1bd65fbc7e80b9001c5f0c1fd8942f80ca',
-    'p5_time':       '7fb07387a5fa68572587e7204c546e2f2fca336b',
-    'quote_number':  '7253c923d10c16cab1e171ffd0efbf8aee3c1858',
-    'po_number':     '',
-    'platform_company': '',
+    'deal_type':         'ed1ea84ddf0aeccf6d0b3d927026105878826510',
+    'mfg_type':          '47d2446f3ab01948599ee675f453635f85a20c9d',
+    'industry':          '6aea8f84232712fdf542c789b7d589c271da21fb',
+    'customer_part':     'bf83e3810120851228084c7f58f6fa40437c8915',
+    'part':              '6609b1b875bcedc0740cbe3aecfe48ef0b17c64f',
+    'p1_time':           '4a8eeb233bb88878360ec1d17676db77be8b3b88',
+    'p2_time':           'eeb93bef8e9e1d8b8f5d879cd9193f2f9545b693',
+    'p3_time':           '504c42fe1681d50c19a37c0204c28b0ade57a51a',
+    'p4_time':           'f7c63e1bd65fbc7e80b9001c5f0c1fd8942f80ca',
+    'p5_time':           '7fb07387a5fa68572587e7204c546e2f2fca336b',
+    'quote_number':      '7253c923d10c16cab1e171ffd0efbf8aee3c1858',
+    'po_number':         '05371c14399cb6114fa964998cfae59344f56139',
+    'platform_company':  '25e61f29f3d977465c2104addd1a3a6e15107638',
+}
+
+OPTION_LABELS = {
+    'label': {
+        '15': 'New Part', '16': 'New Customer', '23': 'Synergy',
+        '24': 'Repeat', '26': 'Dormant', '171': 'New Rev',
+        '173': 'OSS - Finish', '174': 'OSS-Material',
+        '175': 'OSS - Hardware', '176': 'Tool Check',
+        15: 'New Part', 16: 'New Customer', 23: 'Synergy',
+        24: 'Repeat', 26: 'Dormant', 171: 'New Rev',
+        173: 'OSS - Finish', 174: 'OSS-Material',
+        175: 'OSS - Hardware', 176: 'Tool Check',
+    },
+    PD_FIELDS['industry']: {
+        '27': 'A&D', '28': 'Automotive', '31': 'Medical',
+        '34': 'Space', '35': 'Industrial', '36': 'EV',
+        27: 'A&D', 28: 'Automotive', 31: 'Medical',
+        34: 'Space', 35: 'Industrial', 36: 'EV',
+    },
+    PD_FIELDS['deal_type']: {
+        '37': 'Bid', '38': 'Demand',
+        37: 'Bid', 38: 'Demand',
+    },
+    PD_FIELDS['mfg_type']: {
+        '41': 'Deep Draw', '42': 'Progressive', '43': 'Secondary',
+        '44': 'Swiss', '45': 'Machining', '50': 'Tooling',
+        41: 'Deep Draw', 42: 'Progressive', 43: 'Secondary',
+        44: 'Swiss', 45: 'Machining', 50: 'Tooling',
+    },
+    PD_FIELDS['platform_company']: {
+        '53': 'Coining', '54': 'GEM', '91': 'National',
+        '100': 'MSK', '101': 'Ditron', '140': 'Hudson',
+        53: 'Coining', 54: 'GEM', 91: 'National',
+        100: 'MSK', 101: 'Ditron', 140: 'Hudson',
+    },
 }
 
 PHASE_IDS = {20: 'Phase 1', 21: 'Phase 2', 22: 'Phase 3', 23: 'Phase 4', 24: 'Phase 5'}
@@ -385,81 +420,38 @@ def match_with_pd_cache(consolidated_rows, pd_cache):
     return matched_rows, unmatched_rows
 
 
+def translate_field(field_key, raw_value):
+    if raw_value is None or raw_value == '':
+        return ''
+    field_opts = OPTION_LABELS.get(field_key, {})
+    def lookup(value):
+        if value in field_opts:
+            return field_opts[value]
+        value_str = str(value).strip()
+        if value_str in field_opts:
+            return field_opts[value_str]
+        try:
+            value_int = int(value_str)
+            if value_int in field_opts:
+                return field_opts[value_int]
+        except (TypeError, ValueError):
+            pass
+        return value_str
+    if isinstance(raw_value, list):
+        return ', '.join(str(lookup(v)) for v in raw_value)
+    raw_str = str(raw_value)
+    if ',' in raw_str:
+        parts = [p.strip() for p in raw_str.split(',') if p.strip()]
+        return ', '.join(str(lookup(p)) for p in parts)
+    return str(lookup(raw_value))
+
+
 def fetch_deal_details(deal_ids):
     if not API_TOKEN:
         print("  WARNING: No PIPEDRIVE_API_KEY set, skipping deal detail fetch")
         return {}
 
     print(f"  Fetching details for {len(deal_ids)} Pipedrive deals...")
-
-    option_maps = {}
-    try:
-        page_start = 0
-        limit = 500
-        while True:
-            resp = requests.get(
-                f'{BASE_URL}/dealFields',
-                params={'api_token': API_TOKEN, 'start': page_start, 'limit': limit},
-                timeout=30
-            )
-            if resp.status_code == 429:
-                time.sleep(10)
-                continue
-            if resp.status_code != 200:
-                break
-            payload = resp.json()
-            fields = payload.get('data') or []
-            for field in fields:
-                key = field.get('key', '')
-                options = field.get('options') or []
-                if not key or not isinstance(options, list) or not options:
-                    continue
-                field_map = option_maps.setdefault(key, {})
-                for opt in options:
-                    opt_id = opt.get('id') or opt.get('value') or opt.get('key')
-                    opt_label = opt.get('label') or opt.get('name') or opt.get('value') or str(opt_id)
-                    if opt_id is not None:
-                        field_map[opt_id] = str(opt_label)
-                        field_map[str(opt_id).strip()] = str(opt_label)
-                        try:
-                            field_map[int(str(opt_id).strip())] = str(opt_label)
-                        except (TypeError, ValueError):
-                            pass
-            pagination = payload.get('additional_data', {}).get('pagination', {})
-            if not pagination.get('more_items_in_collection', False):
-                break
-            page_start = pagination.get('next_start', page_start + limit)
-        print(f"  Loaded option labels for {len(option_maps)} fields")
-    except Exception as e:
-        print(f"  Warning: Could not fetch field defs: {e}")
-
-    def translate_field(field_key, raw_value):
-        if raw_value is None or raw_value == '':
-            return ''
-        field_opts = option_maps.get(field_key, {})
-        if not field_opts:
-            return str(raw_value)
-        def lookup(value):
-            if value in field_opts:
-                return field_opts[value]
-            value_str = str(value).strip()
-            if value_str in field_opts:
-                return field_opts[value_str]
-            try:
-                value_int = int(value_str)
-                if value_int in field_opts:
-                    return field_opts[value_int]
-            except (TypeError, ValueError):
-                pass
-            return value_str
-        if isinstance(raw_value, list):
-            return ', '.join(str(lookup(v)) for v in raw_value)
-        raw_str = str(raw_value)
-        if ',' in raw_str:
-            parts = [p.strip() for p in raw_str.split(',') if p.strip()]
-            return ', '.join(str(lookup(p)) for p in parts)
-        return str(lookup(raw_value))
-
     deal_details = {}
     unique_ids = list(set(deal_ids))
     fetched = 0
@@ -485,7 +477,6 @@ def fetch_deal_details(deal_ids):
                 if deal:
                     org = deal.get('org_id') or {}
                     deal_details[deal_id] = {
-                        'id': deal.get('id', ''),
                         'title': deal.get('title', ''),
                         'value': deal.get('value', ''),
                         'status': deal.get('status', ''),
@@ -493,13 +484,13 @@ def fetch_deal_details(deal_ids):
                         'org_name': org.get('name', '') if isinstance(org, dict) else '',
                         'org_id': org.get('value', '') if isinstance(org, dict) else '',
                         'stage_id': deal.get('stage_id', ''),
-                        'label': deal.get('label', ''),
-                        'platform_company': translate_field(PD_FIELDS.get('platform_company', ''), deal.get(PD_FIELDS.get('platform_company', ''), '')),
+                        'label': translate_field('label', deal.get('label', '')),
+                        'platform_company': translate_field(PD_FIELDS['platform_company'], deal.get(PD_FIELDS['platform_company'], '')),
                         'deal_type': translate_field(PD_FIELDS['deal_type'], deal.get(PD_FIELDS['deal_type'], '')),
                         'mfg_type': translate_field(PD_FIELDS['mfg_type'], deal.get(PD_FIELDS['mfg_type'], '')),
                         'industry': translate_field(PD_FIELDS['industry'], deal.get(PD_FIELDS['industry'], '')),
                         'quote_number': deal.get(PD_FIELDS['quote_number'], ''),
-                        'po_number': deal.get(PD_FIELDS.get('po_number', ''), ''),
+                        'po_number': deal.get(PD_FIELDS['po_number'], ''),
                         'p1_time': deal.get(PD_FIELDS['p1_time'], ''),
                         'p2_time': deal.get(PD_FIELDS['p2_time'], ''),
                         'p3_time': deal.get(PD_FIELDS['p3_time'], ''),
@@ -705,8 +696,8 @@ def main():
 
     ws_pd = wb.create_sheet("PD_Info")
     pd_headers = [
-        'PD_ID', 'PD_Title',
-        'id', 'title', 'value', 'status', 'won_time',
+        'PD_ID', 'CUSTOMER_PART_ID',
+        'title', 'value', 'status', 'won_time',
         'org_name', 'org_id', 'stage_id', 'label',
         'platform_company', 'deal_type', 'mfg_type', 'industry',
         'quote_number', 'po_number',
@@ -719,8 +710,8 @@ def main():
         pd_id = cr.get('pd_id', '')
         dd = deal_details.get(pd_id, {})
         write_row(ws_pd, idx, [
-            pd_id, dd.get('title', ''),
-            dd.get('id', ''), dd.get('title', ''), dd.get('value', ''),
+            pd_id, cr.get('cust_part', ''),
+            dd.get('title', ''), dd.get('value', ''),
             dd.get('status', ''), dd.get('won_time', ''),
             dd.get('org_name', ''), dd.get('org_id', ''),
             dd.get('stage_id', ''), dd.get('label', ''),
@@ -733,9 +724,9 @@ def main():
             dd.get('part', ''), dd.get('customer_part', ''),
         ])
 
-    set_col_widths(ws_pd, [10, 30, 10, 30, 12, 10, 20, 30, 10, 10, 10, 18, 18, 18, 18, 14, 14, 12, 12, 12, 12, 12, 20, 20])
+    set_col_widths(ws_pd, [10, 22, 30, 12, 10, 20, 30, 10, 10, 18, 18, 18, 18, 18, 14, 14, 12, 12, 12, 12, 12, 20, 20])
     ws_pd.freeze_panes = 'A2'
-    ws_pd.auto_filter.ref = f"A1:X{len(matched_rows) + 1}"
+    ws_pd.auto_filter.ref = f"A1:W{len(matched_rows) + 1}"
     print(f"  PD_Info: {len(matched_rows)} rows ({len(deal_details)} deals fetched from Pipedrive)")
 
     wb.save(OUTPUT_FILE)
