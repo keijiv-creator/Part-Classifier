@@ -2,9 +2,9 @@ import { useState, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -22,6 +22,14 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Search,
+  Play,
+  Settings,
+  LayoutDashboard,
+  FolderInput,
+  FileOutput,
+  SlidersHorizontal,
+  CloudUpload,
+  X,
 } from "lucide-react";
 import {
   BarChart,
@@ -37,7 +45,6 @@ import {
   Legend,
 } from "recharts";
 
-const BASE = import.meta.env.BASE_URL;
 const API_BASE = "/api";
 
 const CHART_COLORS = [
@@ -123,22 +130,22 @@ function KpiCard({
   trend?: "up" | "down" | "neutral";
 }) {
   return (
-    <Card>
-      <CardContent className="pt-6">
+    <Card className="border-0 shadow-sm">
+      <CardContent className="pt-5 pb-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
             <p className="text-2xl font-bold mt-1">{value}</p>
             {subtitle && (
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                {trend === "up" && <ArrowUpRight className="h-3 w-3 text-green-500" />}
+                {trend === "up" && <ArrowUpRight className="h-3 w-3 text-emerald-500" />}
                 {trend === "down" && <ArrowDownRight className="h-3 w-3 text-red-500" />}
                 {subtitle}
               </p>
             )}
           </div>
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Icon className="h-5 w-5 text-primary" />
+          <div className="h-10 w-10 rounded-lg bg-[#1B2A4A]/10 flex items-center justify-center">
+            <Icon className="h-5 w-5 text-[#1B2A4A]" />
           </div>
         </div>
       </CardContent>
@@ -191,7 +198,7 @@ function DataTable({
           <thead className="bg-muted/50 sticky top-0">
             <tr>
               {columns.map((col) => (
-                <th key={col.key} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">
+                <th key={col.key} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap text-xs uppercase tracking-wide">
                   {col.label}
                 </th>
               ))}
@@ -199,7 +206,7 @@ function DataTable({
           </thead>
           <tbody>
             {paged.map((row, i) => (
-              <tr key={i} className="border-t hover:bg-muted/30">
+              <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
                 {columns.map((col) => (
                   <td key={col.key} className="px-3 py-1.5 whitespace-nowrap">
                     {col.format ? col.format(row[col.key]) : String(row[col.key] ?? "")}
@@ -211,7 +218,7 @@ function DataTable({
         </table>
       </div>
       {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center justify-between mt-3">
           <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
             Previous
           </Button>
@@ -227,11 +234,14 @@ function DataTable({
   );
 }
 
+type NavPage = "process" | "dashboard" | "results" | "settings";
+
 export default function Dashboard() {
   const [bookingsFile, setBookingsFile] = useState<File | null>(null);
   const [nationalFile, setNationalFile] = useState<File | null>(null);
   const [cutoffYear, setCutoffYear] = useState("2021");
   const [faiThreshold, setFaiThreshold] = useState("0.50");
+  const [syncPipedrive, setSyncPipedrive] = useState(true);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
@@ -239,6 +249,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("summary");
   const [dragOver1, setDragOver1] = useState(false);
   const [dragOver2, setDragOver2] = useState(false);
+  const [activePage, setActivePage] = useState<NavPage>(result ? "dashboard" : "process");
 
   const handleDrop = useCallback(
     (setter: (f: File) => void, e: React.DragEvent) => {
@@ -251,7 +262,7 @@ export default function Dashboard() {
 
   const runAnalysis = async () => {
     if (!bookingsFile || !nationalFile) {
-      setError("Please upload both files before running the analysis.");
+      setError("Please upload both files before running.");
       return;
     }
     setLoading(true);
@@ -286,6 +297,7 @@ export default function Dashboard() {
       setResult(data);
       setProgress(100);
       setActiveTab("summary");
+      setActivePage("dashboard");
     } catch (err: any) {
       setError(err.message || "An error occurred");
     } finally {
@@ -299,383 +311,425 @@ export default function Dashboard() {
     window.open(`${API_BASE}/analysis/download?path=${encodeURIComponent(result.output_file)}`, "_blank");
   };
 
+  const navItems = [
+    { id: "dashboard" as NavPage, label: "Dashboard", icon: LayoutDashboard, disabled: !result },
+    { id: "process" as NavPage, label: "Process Files", icon: FolderInput },
+    { id: "results" as NavPage, label: "Results & Export", icon: FileOutput, disabled: !result },
+    { id: "settings" as NavPage, label: "Settings", icon: Settings },
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
-              <BarChart3 className="h-5 w-5 text-primary-foreground" />
+    <div className="min-h-screen flex bg-[#F0F2F5]">
+      <aside className="w-56 bg-[#1B2A4A] text-white flex flex-col shrink-0">
+        <div className="px-5 py-5 border-b border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-white/15 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold">Parts Analysis Dashboard</h1>
-              <p className="text-xs text-muted-foreground">Repeat vs. New Business Analysis</p>
+              <p className="text-sm font-semibold leading-tight">National Pipeline</p>
+              <p className="text-[10px] text-white/50 uppercase tracking-widest">Manager</p>
             </div>
           </div>
-          {result && (
-            <Button onClick={downloadExcel} className="gap-2">
-              <Download className="h-4 w-4" />
-              Download Excel
-            </Button>
-          )}
         </div>
-      </header>
+        <nav className="flex-1 py-3 px-3 space-y-0.5">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => !item.disabled && setActivePage(item.id)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                activePage === item.id
+                  ? "bg-white/15 text-white"
+                  : item.disabled
+                  ? "text-white/25 cursor-not-allowed"
+                  : "text-white/60 hover:text-white hover:bg-white/8"
+              }`}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </aside>
 
-      <main className="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Upload className="h-4 w-4" />
-              Input Files & Parameters
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div
-                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
-                  dragOver1 ? "border-primary bg-primary/5" : bookingsFile ? "border-green-400 bg-green-50" : "border-muted-foreground/25 hover:border-primary/50"
-                }`}
-                onDragOver={(e) => { e.preventDefault(); setDragOver1(true); }}
-                onDragLeave={() => setDragOver1(false)}
-                onDrop={(e) => { setDragOver1(false); handleDrop(setBookingsFile, e); }}
-                onClick={() => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.accept = ".zip";
-                  input.onchange = (e) => {
-                    const file = (e.target as HTMLInputElement).files?.[0];
-                    if (file) setBookingsFile(file);
-                  };
-                  input.click();
-                }}
-              >
-                {bookingsFile ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <CheckCircle2 className="h-8 w-8 text-green-500" />
-                    <p className="text-sm font-medium truncate max-w-full">{bookingsFile.name}</p>
-                    <p className="text-xs text-muted-foreground">{(bookingsFile.size / 1024).toFixed(0)} KB</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm font-medium">Natman Bookings</p>
-                    <p className="text-xs text-muted-foreground">Drag & drop .zip</p>
-                  </div>
-                )}
-              </div>
-
-              <div
-                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
-                  dragOver2 ? "border-primary bg-primary/5" : nationalFile ? "border-green-400 bg-green-50" : "border-muted-foreground/25 hover:border-primary/50"
-                }`}
-                onDragOver={(e) => { e.preventDefault(); setDragOver2(true); }}
-                onDragLeave={() => setDragOver2(false)}
-                onDrop={(e) => { setDragOver2(false); handleDrop(setNationalFile, e); }}
-                onClick={() => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.accept = ".zip";
-                  input.onchange = (e) => {
-                    const file = (e.target as HTMLInputElement).files?.[0];
-                    if (file) setNationalFile(file);
-                  };
-                  input.click();
-                }}
-              >
-                {nationalFile ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <CheckCircle2 className="h-8 w-8 text-green-500" />
-                    <p className="text-sm font-medium truncate max-w-full">{nationalFile.name}</p>
-                    <p className="text-xs text-muted-foreground">{(nationalFile.size / 1024).toFixed(0)} KB</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm font-medium">Python National</p>
-                    <p className="text-xs text-muted-foreground">Drag & drop .zip</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-xs">Quote Cutoff Year</Label>
-                  <Input
-                    type="number"
-                    value={cutoffYear}
-                    onChange={(e) => setCutoffYear(e.target.value)}
-                    min="2015"
-                    max="2030"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">FAI Threshold</Label>
-                  <Input
-                    type="number"
-                    value={faiThreshold}
-                    onChange={(e) => setFaiThreshold(e.target.value)}
-                    step="0.05"
-                    min="0"
-                    max="1"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col justify-center">
-                <Button
-                  onClick={runAnalysis}
-                  disabled={loading || !bookingsFile || !nationalFile}
-                  className="w-full gap-2 h-12"
-                  size="lg"
-                >
-                  {loading ? (
-                    <>
-                      <Spinner className="h-4 w-4" />
-                      Running Analysis...
-                    </>
-                  ) : (
-                    <>
-                      <TrendingUp className="h-4 w-4" />
-                      Run Analysis
-                    </>
-                  )}
-                </Button>
-                {loading && (
-                  <div className="mt-3">
-                    <Progress value={progress} className="h-2" />
-                    <p className="text-xs text-muted-foreground mt-1 text-center">{progress}% complete</p>
-                  </div>
-                )}
-              </div>
+      <main className="flex-1 overflow-auto">
+        {activePage === "process" && (
+          <div className="max-w-4xl mx-auto px-8 py-8">
+            <div className="mb-8">
+              <h1 className="text-2xl font-bold text-[#1B2A4A]">Process Data</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Upload raw exports to identify new business and sync with Pipedrive.
+              </p>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2 text-[#1B2A4A]">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    National Quote Data
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">Upload the raw quote export (.xlsx)</p>
+                </CardHeader>
+                <CardContent>
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-all cursor-pointer ${
+                      dragOver1
+                        ? "border-[#1B2A4A] bg-[#1B2A4A]/5"
+                        : nationalFile
+                        ? "border-emerald-300 bg-emerald-50"
+                        : "border-gray-200 hover:border-[#1B2A4A]/30 bg-gray-50/50"
+                    }`}
+                    onDragOver={(e) => { e.preventDefault(); setDragOver1(true); }}
+                    onDragLeave={() => setDragOver1(false)}
+                    onDrop={(e) => { setDragOver1(false); handleDrop(setNationalFile, e); }}
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.accept = ".zip,.xlsx";
+                      input.onchange = (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (file) setNationalFile(file);
+                      };
+                      input.click();
+                    }}
+                  >
+                    {nationalFile ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                        <p className="text-sm font-medium text-emerald-700 truncate max-w-full">{nationalFile.name}</p>
+                        <p className="text-xs text-muted-foreground">{(nationalFile.size / 1024).toFixed(0)} KB</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-1"
+                          onClick={(e) => { e.stopPropagation(); setNationalFile(null); }}
+                        >
+                          <X className="h-3 w-3 mr-1" /> Remove
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <CloudUpload className="h-8 w-8 text-gray-400" />
+                        <p className="text-sm font-medium text-gray-600">Drag & drop your file here</p>
+                        <p className="text-xs text-muted-foreground">or click to browse</p>
+                        <Button variant="outline" size="sm" className="mt-2">
+                          Select File
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2 text-[#1B2A4A]">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Development Booking
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">Upload the development booking export (.xlsx)</p>
+                </CardHeader>
+                <CardContent>
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-all cursor-pointer ${
+                      dragOver2
+                        ? "border-[#1B2A4A] bg-[#1B2A4A]/5"
+                        : bookingsFile
+                        ? "border-emerald-300 bg-emerald-50"
+                        : "border-gray-200 hover:border-[#1B2A4A]/30 bg-gray-50/50"
+                    }`}
+                    onDragOver={(e) => { e.preventDefault(); setDragOver2(true); }}
+                    onDragLeave={() => setDragOver2(false)}
+                    onDrop={(e) => { setDragOver2(false); handleDrop(setBookingsFile, e); }}
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.accept = ".zip,.xlsx";
+                      input.onchange = (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (file) setBookingsFile(file);
+                      };
+                      input.click();
+                    }}
+                  >
+                    {bookingsFile ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                        <p className="text-sm font-medium text-emerald-700 truncate max-w-full">{bookingsFile.name}</p>
+                        <p className="text-xs text-muted-foreground">{(bookingsFile.size / 1024).toFixed(0)} KB</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-1"
+                          onClick={(e) => { e.stopPropagation(); setBookingsFile(null); }}
+                        >
+                          <X className="h-3 w-3 mr-1" /> Remove
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <CloudUpload className="h-8 w-8 text-gray-400" />
+                        <p className="text-sm font-medium text-gray-600">Drag & drop your file here</p>
+                        <p className="text-xs text-muted-foreground">or click to browse</p>
+                        <Button variant="outline" size="sm" className="mt-2">
+                          Select File
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="border-0 shadow-sm mb-6">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-[#1B2A4A]">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Processing Options
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-[#1B2A4A]">Sync with Pipedrive</p>
+                    <p className="text-xs text-muted-foreground">Match parts against existing Pipedrive deals</p>
+                  </div>
+                  <Switch checked={syncPipedrive} onCheckedChange={setSyncPipedrive} />
+                </div>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-[#1B2A4A] mb-1.5">Quote Date Cutoff Year</p>
+                    <Input
+                      type="number"
+                      value={cutoffYear}
+                      onChange={(e) => setCutoffYear(e.target.value)}
+                      min="2015"
+                      max="2030"
+                      className="w-28"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-5">Ignore quotes older than this year to reduce noise.</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-[#1B2A4A] mb-1.5">FAI Threshold</p>
+                    <Input
+                      type="number"
+                      value={faiThreshold}
+                      onChange={(e) => setFaiThreshold(e.target.value)}
+                      step="0.05"
+                      min="0"
+                      max="1"
+                      className="w-28"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-5">First Article Inspection revenue threshold (0-1).</p>
+                </div>
+              </CardContent>
+            </Card>
+
             {error && (
-              <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />
-                <p className="text-sm text-destructive">{error}</p>
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                <p className="text-sm text-red-700">{error}</p>
               </div>
             )}
-          </CardContent>
-        </Card>
 
-        {result && (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <KpiCard
-                title="Unique Parts"
-                value={formatNumber(result.summary.total_unique_parts)}
-                icon={Package}
-              />
-              <KpiCard
-                title="New Deals"
-                value={formatNumber(result.summary.new_deals_count)}
-                icon={Target}
-                subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_new)}`}
-              />
-              <KpiCard
-                title="PD Deals"
-                value={formatNumber(result.summary.pd_info_count)}
-                icon={BarChart3}
-                subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_pd)}`}
-              />
-              <KpiCard
-                title="Pipeline Value"
-                value={formatCurrency(result.summary.total_pd_pipeline_value)}
-                icon={DollarSign}
-                trend="up"
-              />
-              <KpiCard
-                title="Won Deals"
-                value={formatNumber(result.summary.won_deals_count)}
-                icon={CheckCircle2}
-                subtitle={formatCurrency(result.summary.won_deals_value)}
-                trend="up"
-              />
-              <KpiCard
-                title="Open Pipeline"
-                value={formatNumber(result.summary.open_deals_count)}
-                icon={Users}
-                subtitle={formatCurrency(result.summary.open_deals_value)}
-              />
+            {loading && (
+              <div className="mb-4">
+                <Progress value={progress} className="h-2" />
+                <p className="text-xs text-muted-foreground mt-1.5 text-center">
+                  Processing... {progress}% complete
+                </p>
+              </div>
+            )}
+
+            <Button
+              onClick={runAnalysis}
+              disabled={loading || !bookingsFile || !nationalFile}
+              className="w-full h-12 text-base font-semibold bg-[#1B2A4A] hover:bg-[#243659] text-white rounded-lg gap-2"
+              size="lg"
+            >
+              {loading ? (
+                <>
+                  <Spinner className="h-4 w-4" />
+                  Running Pipeline...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" />
+                  Run Pipeline
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
+        {activePage === "dashboard" && result && (
+          <div className="px-8 py-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-2xl font-bold text-[#1B2A4A]">Dashboard</h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Analysis completed in {result.elapsed_seconds}s
+                </p>
+              </div>
+              <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                <Download className="h-4 w-4" />
+                Download Excel
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+              <KpiCard title="Unique Parts" value={formatNumber(result.summary.total_unique_parts)} icon={Package} />
+              <KpiCard title="New Deals" value={formatNumber(result.summary.new_deals_count)} icon={Target} subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_new)}`} />
+              <KpiCard title="PD Deals" value={formatNumber(result.summary.pd_info_count)} icon={BarChart3} subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_pd)}`} />
+              <KpiCard title="Pipeline Value" value={formatCurrency(result.summary.total_pd_pipeline_value)} icon={DollarSign} trend="up" />
+              <KpiCard title="Won Deals" value={formatNumber(result.summary.won_deals_count)} icon={CheckCircle2} subtitle={formatCurrency(result.summary.won_deals_value)} trend="up" />
+              <KpiCard title="Open Pipeline" value={formatNumber(result.summary.open_deals_count)} icon={Users} subtitle={formatCurrency(result.summary.open_deals_value)} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <Card className="border-0 shadow-sm">
+                <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Deal Classification (New Deals)</CardTitle></CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie data={dictToChartData(result.analytics.calc_label_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                        {dictToChartData(result.analytics.calc_label_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatNumber(v)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-sm">
+                <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Pipeline Status (PD Deals)</CardTitle></CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie data={dictToChartData(result.analytics.pd_status_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                        {dictToChartData(result.analytics.pd_status_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatNumber(v)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-sm">
+                <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Revenue by Platform</CardTitle></CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={dictToChartData(result.analytics.platform_revenue, "name", "value")} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      <XAxis type="number" tickFormatter={(v) => formatCurrency(v)} />
+                      <YAxis type="category" dataKey="name" width={80} />
+                      <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                      <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-sm">
+                <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Deals by Platform</CardTitle></CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={dictToChartData(result.analytics.platform_distribution, "name", "value")} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      <XAxis type="number" />
+                      <YAxis type="category" dataKey="name" width={80} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill={CHART_COLORS[1]} radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-sm md:col-span-2">
+                <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Top 15 Customers by Pipeline Value</CardTitle></CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={result.analytics.top_customers_pd}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={120} interval={0} tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={(v) => formatCurrency(v)} />
+                      <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                      <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="border-0 shadow-sm">
+              <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Analysis Summary</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
+                  <div className="space-y-2">
+                    <p className="font-semibold text-[#1B2A4A] text-xs uppercase tracking-wide">Data Coverage</p>
+                    <p className="text-muted-foreground">LANDMARK parts: <span className="font-semibold text-foreground">{formatNumber(result.summary.landmark_parts_count)}</span></p>
+                    <p className="text-muted-foreground">PD Cache entries: <span className="font-semibold text-foreground">{formatNumber(result.summary.pd_cache_entries)}</span></p>
+                    <p className="text-muted-foreground">Total unique parts: <span className="font-semibold text-foreground">{formatNumber(result.summary.total_unique_parts)}</span></p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="font-semibold text-[#1B2A4A] text-xs uppercase tracking-wide">New Deals Breakdown</p>
+                    {Object.entries(result.analytics.calc_label_distribution).map(([k, v]) => (
+                      <p key={k} className="text-muted-foreground">{k}: <span className="font-semibold text-foreground">{formatNumber(v)}</span></p>
+                    ))}
+                    <p className="text-muted-foreground">Total Revenue: <span className="font-semibold text-foreground">{formatCurrency(result.summary.total_new_deals_revenue)}</span></p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="font-semibold text-[#1B2A4A] text-xs uppercase tracking-wide">Deal Types</p>
+                    {Object.entries(result.analytics.deal_type_distribution).map(([k, v]) => (
+                      <p key={k} className="text-muted-foreground">{k}: <span className="font-semibold text-foreground">{formatNumber(v)}</span></p>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="font-semibold text-[#1B2A4A] text-xs uppercase tracking-wide">Industry Mix</p>
+                    {Object.entries(result.analytics.industry_distribution).map(([k, v]) => (
+                      <p key={k} className="text-muted-foreground">{k}: <span className="font-semibold text-foreground">{formatNumber(v)}</span></p>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {activePage === "results" && result && (
+          <div className="px-8 py-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-2xl font-bold text-[#1B2A4A]">Results & Export</h1>
+                <p className="text-sm text-muted-foreground mt-1">Browse and export analysis results</p>
+              </div>
+              <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                <Download className="h-4 w-4" />
+                Download Excel
+              </Button>
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="summary">Sales Analytics</TabsTrigger>
-                <TabsTrigger value="charts">Charts</TabsTrigger>
+              <TabsList className="mb-4">
+                <TabsTrigger value="summary">Charts</TabsTrigger>
                 <TabsTrigger value="all_parts">All Parts ({formatNumber(result.sheets.all_unique_parts.length)})</TabsTrigger>
                 <TabsTrigger value="new_deals">New Deals ({formatNumber(result.sheets.new_deals.length)})</TabsTrigger>
                 <TabsTrigger value="pd_info">PD Info ({formatNumber(result.sheets.pd_info.length)})</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="summary" className="space-y-6 mt-4">
+              <TabsContent value="summary" className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Deal Classification (New Deals)</CardTitle>
-                    </CardHeader>
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Label Distribution</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={280}>
                         <PieChart>
-                          <Pie
-                            data={dictToChartData(result.analytics.calc_label_distribution)}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={100}
-                            paddingAngle={4}
-                            dataKey="value"
-                            nameKey="name"
-                            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                          >
-                            {dictToChartData(result.analytics.calc_label_distribution).map((_, i) => (
-                              <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(v: number) => formatNumber(v)} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Pipeline Status (PD Deals)</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={280}>
-                        <PieChart>
-                          <Pie
-                            data={dictToChartData(result.analytics.pd_status_distribution)}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={100}
-                            paddingAngle={4}
-                            dataKey="value"
-                            nameKey="name"
-                            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                          >
-                            {dictToChartData(result.analytics.pd_status_distribution).map((_, i) => (
-                              <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(v: number) => formatNumber(v)} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Revenue by Platform</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={280}>
-                        <BarChart data={dictToChartData(result.analytics.platform_revenue, "name", "value")} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis type="number" tickFormatter={(v) => formatCurrency(v)} />
-                          <YAxis type="category" dataKey="name" width={80} />
-                          <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                          <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Deals by Platform</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={280}>
-                        <BarChart data={dictToChartData(result.analytics.platform_distribution, "name", "value")} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis type="number" />
-                          <YAxis type="category" dataKey="name" width={80} />
-                          <Tooltip />
-                          <Bar dataKey="value" fill={CHART_COLORS[1]} radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="md:col-span-2">
-                    <CardHeader>
-                      <CardTitle className="text-sm">Top 15 Customers by Pipeline Value (PD Deals)</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={350}>
-                        <BarChart data={result.analytics.top_customers_pd}>
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis dataKey="name" angle={-45} textAnchor="end" height={120} interval={0} tick={{ fontSize: 11 }} />
-                          <YAxis tickFormatter={(v) => formatCurrency(v)} />
-                          <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                          <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Analysis Summary</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div className="space-y-2">
-                        <p className="font-medium text-muted-foreground">Data Coverage</p>
-                        <p>LANDMARK parts: <span className="font-semibold">{formatNumber(result.summary.landmark_parts_count)}</span></p>
-                        <p>PD Cache entries: <span className="font-semibold">{formatNumber(result.summary.pd_cache_entries)}</span></p>
-                        <p>Total unique parts: <span className="font-semibold">{formatNumber(result.summary.total_unique_parts)}</span></p>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="font-medium text-muted-foreground">New Deals Breakdown</p>
-                        {Object.entries(result.analytics.calc_label_distribution).map(([k, v]) => (
-                          <p key={k}>{k}: <span className="font-semibold">{formatNumber(v)}</span></p>
-                        ))}
-                        <p>Total Revenue: <span className="font-semibold">{formatCurrency(result.summary.total_new_deals_revenue)}</span></p>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="font-medium text-muted-foreground">Deal Types</p>
-                        {Object.entries(result.analytics.deal_type_distribution).map(([k, v]) => (
-                          <p key={k}>{k}: <span className="font-semibold">{formatNumber(v)}</span></p>
-                        ))}
-                      </div>
-                      <div className="space-y-2">
-                        <p className="font-medium text-muted-foreground">Industry Mix</p>
-                        {Object.entries(result.analytics.industry_distribution).map(([k, v]) => (
-                          <p key={k}>{k}: <span className="font-semibold">{formatNumber(v)}</span></p>
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="charts" className="space-y-6 mt-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Label Distribution</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={280}>
-                        <PieChart>
-                          <Pie
-                            data={dictToChartData(result.analytics.label_distribution)}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={90}
-                            paddingAngle={3}
-                            dataKey="value"
-                            nameKey="name"
-                          >
-                            {dictToChartData(result.analytics.label_distribution).map((_, i) => (
-                              <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                            ))}
+                          <Pie data={dictToChartData(result.analytics.label_distribution)} cx="50%" cy="50%" innerRadius={50} outerRadius={90} paddingAngle={3} dataKey="value" nameKey="name">
+                            {dictToChartData(result.analytics.label_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
                           </Pie>
                           <Tooltip />
                           <Legend />
@@ -684,10 +738,8 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Pipeline Stage Distribution</CardTitle>
-                    </CardHeader>
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Pipeline Stage Distribution</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={280}>
                         <BarChart data={dictToChartData(result.analytics.stage_distribution)}>
@@ -701,26 +753,13 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Industry Distribution</CardTitle>
-                    </CardHeader>
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Industry Distribution</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={280}>
                         <PieChart>
-                          <Pie
-                            data={dictToChartData(result.analytics.industry_distribution)}
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={100}
-                            paddingAngle={3}
-                            dataKey="value"
-                            nameKey="name"
-                            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                          >
-                            {dictToChartData(result.analytics.industry_distribution).map((_, i) => (
-                              <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                            ))}
+                          <Pie data={dictToChartData(result.analytics.industry_distribution)} cx="50%" cy="50%" outerRadius={100} paddingAngle={3} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                            {dictToChartData(result.analytics.industry_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
                           </Pie>
                           <Tooltip />
                         </PieChart>
@@ -728,10 +767,8 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">New Deals Status Distribution</CardTitle>
-                    </CardHeader>
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">New Deals by Status</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={280}>
                         <BarChart data={dictToChartData(result.analytics.new_deals_status_distribution)}>
@@ -745,10 +782,8 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card className="md:col-span-2">
-                    <CardHeader>
-                      <CardTitle className="text-sm">Top 15 New Deal Customers by Revenue</CardTitle>
-                    </CardHeader>
+                  <Card className="border-0 shadow-sm md:col-span-2">
+                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Top 15 New Deal Customers by Revenue</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={350}>
                         <BarChart data={result.analytics.top_customers_new}>
@@ -764,8 +799,8 @@ export default function Dashboard() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="all_parts" className="mt-4">
-                <Card>
+              <TabsContent value="all_parts">
+                <Card className="border-0 shadow-sm">
                   <CardContent className="pt-6">
                     <DataTable
                       data={result.sheets.all_unique_parts}
@@ -780,8 +815,8 @@ export default function Dashboard() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="new_deals" className="mt-4">
-                <Card>
+              <TabsContent value="new_deals">
+                <Card className="border-0 shadow-sm">
                   <CardContent className="pt-6">
                     <DataTable
                       data={result.sheets.new_deals}
@@ -800,8 +835,8 @@ export default function Dashboard() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="pd_info" className="mt-4">
-                <Card>
+              <TabsContent value="pd_info">
+                <Card className="border-0 shadow-sm">
                   <CardContent className="pt-6">
                     <DataTable
                       data={result.sheets.pd_info}
@@ -824,11 +859,52 @@ export default function Dashboard() {
                 </Card>
               </TabsContent>
             </Tabs>
+          </div>
+        )}
 
-            <div className="text-center text-xs text-muted-foreground pb-4">
-              Analysis completed in {result.elapsed_seconds}s
+        {activePage === "settings" && (
+          <div className="max-w-2xl mx-auto px-8 py-8">
+            <div className="mb-8">
+              <h1 className="text-2xl font-bold text-[#1B2A4A]">Settings</h1>
+              <p className="text-sm text-muted-foreground mt-1">Configure pipeline defaults</p>
             </div>
-          </>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6 space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-[#1B2A4A]">Pipedrive Sync</p>
+                    <p className="text-xs text-muted-foreground">Automatically match parts with Pipedrive deals</p>
+                  </div>
+                  <Switch checked={syncPipedrive} onCheckedChange={setSyncPipedrive} />
+                </div>
+                <div className="border-t pt-5">
+                  <p className="text-sm font-medium text-[#1B2A4A] mb-1.5">Default Cutoff Year</p>
+                  <Input
+                    type="number"
+                    value={cutoffYear}
+                    onChange={(e) => setCutoffYear(e.target.value)}
+                    min="2015"
+                    max="2030"
+                    className="w-32"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1.5">Quotes before this year will be excluded</p>
+                </div>
+                <div className="border-t pt-5">
+                  <p className="text-sm font-medium text-[#1B2A4A] mb-1.5">Default FAI Threshold</p>
+                  <Input
+                    type="number"
+                    value={faiThreshold}
+                    onChange={(e) => setFaiThreshold(e.target.value)}
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    className="w-32"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1.5">Revenue threshold for First Article Inspection split (0-1)</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
       </main>
     </div>
