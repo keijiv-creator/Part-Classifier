@@ -82,7 +82,13 @@ OPTION_LABELS = {
     },
 }
 
-PHASE_IDS = {20: 'Phase 1', 21: 'Phase 2', 22: 'Phase 3', 23: 'Phase 4', 24: 'Phase 5'}
+PHASE_IDS = {
+    20: 'Phase 1', 21: 'Phase 2', 22: 'Phase 3', 23: 'Phase 4', 24: 'Phase 5',
+    11: 'Inquiry', 17: 'Ready For Pipeline', 26: 'No-Quote',
+    35: 'RFQ Received', 36: 'In Estimating', 39: 'In Process',
+    37: 'Ready for Sales', 38: 'Quotes Sent',
+    27: 'Projected Deals', 34: 'Marketing Stalled', 30: 'Contact Made',
+}
 QUOTE_SENT_CUTOFF_YEAR = 2021
 FAI_THRESHOLD = 0.50
 
@@ -476,6 +482,8 @@ def fetch_deal_details(deal_ids):
                 deal = resp.json().get('data', {})
                 if deal:
                     org = deal.get('org_id') or {}
+                    raw_stage = deal.get('stage_id', '')
+                    stage_label = PHASE_IDS.get(raw_stage, str(raw_stage) if raw_stage else '')
                     deal_details[deal_id] = {
                         'title': deal.get('title', ''),
                         'value': deal.get('value', ''),
@@ -483,7 +491,7 @@ def fetch_deal_details(deal_ids):
                         'won_time': deal.get('won_time', ''),
                         'org_name': org.get('name', '') if isinstance(org, dict) else '',
                         'org_id': org.get('value', '') if isinstance(org, dict) else '',
-                        'stage_id': deal.get('stage_id', ''),
+                        'stage_id': stage_label,
                         'label': translate_field('label', deal.get('label', '')),
                         'platform_company': translate_field(PD_FIELDS['platform_company'], deal.get(PD_FIELDS['platform_company'], '')),
                         'deal_type': translate_field(PD_FIELDS['deal_type'], deal.get(PD_FIELDS['deal_type'], '')),

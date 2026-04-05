@@ -12,3 +12,9 @@ id = "_38x4162WDJ_TCtqMLgrt"
 uri = "file://output/Parts_Analysis_20260405_220616.xlsx"
 type = "table"
 title = "Parts Analysis - Repeat vs New Parts (Updated)"
+
+[[outputs]]
+id = "ywk8xnY70ejz2pROaSaTM"
+uri = "file://output/Parts_Analysis_20260405_221314.xlsx"
+type = "table"
+title = "Parts Analysis - Repeat vs New Parts (Fixed Stage Names)"
