@@ -658,31 +658,30 @@ def main():
         first_order_no = lm.get('first_order_no', '')
         lm_quote_no = lm.get('quote_no', '')
 
-        calc_label = ''
-        p2_str = cr.get('mapped_pd_p2_time', '')
-        if first_order_date and p2_str:
-            try:
-                if hasattr(first_order_date, 'strftime'):
-                    fod = first_order_date
-                else:
-                    fod = datetime.strptime(str(first_order_date), '%Y-%m-%d')
-
-                if isinstance(p2_str, str) and p2_str:
-                    p2_date = datetime.strptime(p2_str, '%Y-%m-%d')
-                elif hasattr(p2_str, 'strftime'):
-                    p2_date = p2_str
-                else:
-                    p2_date = None
-
-                if p2_date and fod:
-                    if p2_date > fod:
-                        calc_label = 'Repeat'
-                    else:
-                        calc_label = 'New Part'
-            except (ValueError, TypeError):
-                pass
-        elif not first_order_date and cust_part not in landmark:
+        mapped_prob = str(cr.get('mapped_probability', '')).strip().upper()
+        if mapped_prob == 'NC':
+            calc_label = 'New Customer'
+        else:
             calc_label = 'New Part'
+            p2_str = cr.get('mapped_pd_p2_time', '')
+            if first_order_date and p2_str:
+                try:
+                    if hasattr(first_order_date, 'strftime'):
+                        fod = first_order_date
+                    else:
+                        fod = datetime.strptime(str(first_order_date), '%Y-%m-%d')
+
+                    if isinstance(p2_str, str) and p2_str:
+                        p2_date = datetime.strptime(p2_str, '%Y-%m-%d')
+                    elif hasattr(p2_str, 'strftime'):
+                        p2_date = p2_str
+                    else:
+                        p2_date = None
+
+                    if p2_date and fod and p2_date > fod:
+                        calc_label = 'Repeat'
+                except (ValueError, TypeError):
+                    pass
 
         write_row(ws_new, idx, [
             cr.get('org_id', ''), cr.get('name', ''), cr.get('cust_part', ''),
@@ -700,7 +699,8 @@ def main():
     ws_new.auto_filter.ref = f"A1:O{len(unmatched_rows) + 1}"
     repeat_count = sum(1 for r in range(2, len(unmatched_rows) + 2) if ws_new.cell(row=r, column=15).value == 'Repeat')
     new_count = sum(1 for r in range(2, len(unmatched_rows) + 2) if ws_new.cell(row=r, column=15).value == 'New Part')
-    print(f"  New_Deals: {len(unmatched_rows)} rows ({repeat_count} Repeat, {new_count} New Part)")
+    nc_count = sum(1 for r in range(2, len(unmatched_rows) + 2) if ws_new.cell(row=r, column=15).value == 'New Customer')
+    print(f"  New_Deals: {len(unmatched_rows)} rows ({repeat_count} Repeat, {new_count} New Part, {nc_count} New Customer)")
 
     ws_pd = wb.create_sheet("PD_Info")
     pd_headers = [

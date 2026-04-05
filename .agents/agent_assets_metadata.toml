@@ -18,3 +18,9 @@ id = "ywk8xnY70ejz2pROaSaTM"
 uri = "file://output/Parts_Analysis_20260405_221314.xlsx"
 type = "table"
 title = "Parts Analysis - Repeat vs New Parts (Fixed Stage Names)"
+
+[[outputs]]
+id = "Rr4W2ED6JM2p-DQcTqDId"
+uri = "file://output/Parts_Analysis_20260405_223047.xlsx"
+type = "table"
+title = "Parts Analysis - Updated CALC_LABEL Logic"
