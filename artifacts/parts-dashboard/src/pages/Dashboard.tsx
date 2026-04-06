@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,10 +30,6 @@ import {
   SlidersHorizontal,
   CloudUpload,
   X,
-  Clock,
-  RefreshCw,
-  XCircle,
-  Loader2,
 } from "lucide-react";
 import {
   BarChart,
@@ -48,7 +44,6 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import * as XLSX from "xlsx";
 
 const API_BASE = "/api";
 
@@ -249,33 +244,23 @@ function SourceDataView({
   sheets,
   sheetNames,
   defaultSheet,
-  onExportExcel,
 }: {
   title: string;
   subtitle: string;
   sheets: Record<string, { headers: string[]; rows: any[] }>;
   sheetNames: string[];
   defaultSheet: string;
-  onExportExcel?: () => void;
 }) {
   const [activeSheet, setActiveSheet] = useState(defaultSheet);
   const totalRows = Object.values(sheets).reduce((sum, s) => sum + s.rows.length, 0);
 
   return (
     <div className="px-8 py-8">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1B2A4A]">{title}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {subtitle} — {sheetNames.length} sheet{sheetNames.length !== 1 ? "s" : ""}, {formatNumber(totalRows)} total rows
-          </p>
-        </div>
-        {onExportExcel && (
-          <Button onClick={onExportExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
-            <Download className="h-4 w-4" />
-            Export to Excel
-          </Button>
-        )}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-[#1B2A4A]">{title}</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {subtitle} — {sheetNames.length} sheet{sheetNames.length !== 1 ? "s" : ""}, {formatNumber(totalRows)} total rows
+        </p>
       </div>
       <Tabs value={activeSheet} onValueChange={setActiveSheet}>
         <TabsList className="mb-4">
@@ -302,24 +287,7 @@ function SourceDataView({
   );
 }
 
-interface RunLogEntry {
-  id: string;
-  nationalFileName: string;
-  bookingsFileName: string;
-  nationalRowCount: number;
-  cutoffYear: string;
-  faiThreshold: string;
-  uploadTime: string;
-  status: "success" | "fail";
-  errorSummary: string;
-  cacheKey: string;
-  uniqueParts: number;
-  newDeals: number;
-  pdInfo: number;
-  elapsedSeconds: number;
-}
-
-type NavPage = "process" | "dashboard" | "results" | "source_bookings" | "history" | "settings";
+type NavPage = "process" | "dashboard" | "results" | "source_national" | "source_bookings" | "settings";
 
 export default function Dashboard() {
   const [bookingsFile, setBookingsFile] = useState<File | null>(null);
@@ -330,55 +298,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<AnalysisResult | null>(() => {
-    try {
-      const saved = localStorage.getItem("analysis_result");
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
-  });
+  const [result, setResult] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState("summary");
   const [dragOver1, setDragOver1] = useState(false);
   const [dragOver2, setDragOver2] = useState(false);
-  const [activePage, setActivePage] = useState<NavPage>(() => {
-    try {
-      if (localStorage.getItem("analysis_result")) return "dashboard";
-    } catch {}
-    return "process";
-  });
-  const [wasCached, setWasCached] = useState(false);
-  const [cacheReason, setCacheReason] = useState("");
-  const [runHistory, setRunHistory] = useState<RunLogEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(`${API_BASE}/analysis/history`)
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setRunHistory(data); })
-      .catch(() => {});
-  }, [result]);
-
-  const loadHistoryRun = async (runId: string) => {
-    setHistoryLoading(runId);
-    try {
-      const resp = await fetch(`${API_BASE}/analysis/history/${runId}`);
-      if (!resp.ok) {
-        const err = await resp.json();
-        setError(err.error || "Failed to load historical run");
-        return;
-      }
-      const data = await resp.json();
-      setResult(data);
-      setWasCached(true);
-      setCacheReason("Loaded from run history");
-      try { localStorage.setItem("analysis_result", JSON.stringify(data)); } catch {}
-      setActivePage("dashboard");
-    } catch (err: any) {
-      setError(err.message || "Failed to load");
-    } finally {
-      setHistoryLoading(null);
-    }
-  };
+  const [activePage, setActivePage] = useState<NavPage>(result ? "dashboard" : "process");
 
   const handleDrop = useCallback(
     (setter: (f: File) => void, e: React.DragEvent) => {
@@ -422,16 +346,8 @@ export default function Dashboard() {
         throw new Error(err.error || "Analysis failed");
       }
 
-      const data = await resp.json();
-      const isCached = data.cached === true;
-      const reason = data.cacheReason || "";
-      delete data.cached;
-      delete data.cacheReason;
-      const analysisData: AnalysisResult = data;
-      setResult(analysisData);
-      setWasCached(isCached);
-      setCacheReason(reason);
-      try { localStorage.setItem("analysis_result", JSON.stringify(analysisData)); } catch {}
+      const data: AnalysisResult = await resp.json();
+      setResult(data);
       setProgress(100);
       setActiveTab("summary");
       setActivePage("dashboard");
@@ -452,8 +368,8 @@ export default function Dashboard() {
     { id: "dashboard" as NavPage, label: "Dashboard", icon: LayoutDashboard, disabled: !result },
     { id: "process" as NavPage, label: "Process Files", icon: FolderInput },
     { id: "results" as NavPage, label: "Results & Export", icon: FileOutput, disabled: !result },
+    { id: "source_national" as NavPage, label: "Python National", icon: FileSpreadsheet, disabled: !result },
     { id: "source_bookings" as NavPage, label: "Natman Bookings", icon: FileSpreadsheet, disabled: !result },
-    { id: "history" as NavPage, label: "Run History", icon: Clock },
     { id: "settings" as NavPage, label: "Settings", icon: Settings },
   ];
 
@@ -702,26 +618,6 @@ export default function Dashboard() {
                 </>
               )}
             </Button>
-
-            {result && !loading && (
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
-                  <p className="text-sm text-blue-800">
-                    Previous results available — {formatNumber(result.summary.total_unique_parts)} parts analyzed.
-                    Upload the same files to load cached results instantly.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-blue-600 hover:text-blue-800 shrink-0"
-                  onClick={() => setActivePage("dashboard")}
-                >
-                  View Results
-                </Button>
-              </div>
-            )}
           </div>
         )}
 
@@ -730,11 +626,8 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-2xl font-bold text-[#1B2A4A]">Dashboard</h1>
-                <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+                <p className="text-sm text-muted-foreground mt-1">
                   Analysis completed in {result.elapsed_seconds}s
-                  {wasCached && (
-                    <Badge variant="secondary" className="text-xs" title={cacheReason}>Cached</Badge>
-                  )}
                 </p>
               </div>
               <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
@@ -1024,20 +917,25 @@ export default function Dashboard() {
           </div>
         )}
 
+        {activePage === "source_national" && result && (() => {
+          const sheets = result.source_data.national_sheets;
+          const sheetNames = Object.keys(sheets);
+          const defaultSheet = sheetNames[0] || "";
+          return (
+            <SourceDataView
+              title="Python National"
+              subtitle="Output from the Python National package"
+              sheets={sheets}
+              sheetNames={sheetNames}
+              defaultSheet={defaultSheet}
+            />
+          );
+        })()}
+
         {activePage === "source_bookings" && result && (() => {
           const sheets = result.source_data.bookings_sheets;
           const sheetNames = Object.keys(sheets);
           const defaultSheet = sheetNames[0] || "";
-          const exportBookingsExcel = () => {
-            const wb = XLSX.utils.book_new();
-            for (const name of sheetNames) {
-              const sheet = sheets[name];
-              const wsData = [sheet.headers, ...sheet.rows.map((row: any) => sheet.headers.map((h: string) => row[h]))];
-              const ws = XLSX.utils.aoa_to_sheet(wsData);
-              XLSX.utils.book_append_sheet(wb, ws, name.substring(0, 31));
-            }
-            XLSX.writeFile(wb, "Natman_Bookings_Export.xlsx");
-          };
           return (
             <SourceDataView
               title="Natman Bookings"
@@ -1045,91 +943,9 @@ export default function Dashboard() {
               sheets={sheets}
               sheetNames={sheetNames}
               defaultSheet={defaultSheet}
-              onExportExcel={exportBookingsExcel}
             />
           );
         })()}
-
-        {activePage === "history" && (
-          <div className="px-8 py-8">
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-[#1B2A4A]">Run History</h1>
-              <p className="text-sm text-muted-foreground mt-1">View past pipeline runs and load previous results</p>
-            </div>
-
-            {runHistory.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Clock className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
-                  <p className="text-muted-foreground">No pipeline runs yet. Process files to see run history.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {runHistory.map((run) => (
-                  <Card key={run.id} className={`transition-all hover:shadow-md ${run.status === "fail" ? "border-red-200" : ""}`}>
-                    <CardContent className="py-4 px-5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            {run.status === "success" ? (
-                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                            ) : (
-                              <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-                            )}
-                            <span className="font-semibold text-sm text-[#1B2A4A] truncate">
-                              {run.nationalFileName}
-                            </span>
-                            <Badge variant={run.status === "success" ? "default" : "destructive"} className="text-xs shrink-0">
-                              {run.status === "success" ? "Success" : "Failed"}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground ml-6">
-                            <span>{new Date(run.uploadTime).toLocaleString()}</span>
-                            <span>{formatNumber(run.nationalRowCount)} rows</span>
-                            <span>Cutoff: {run.cutoffYear}</span>
-                            <span>FAI: {run.faiThreshold}</span>
-                            {run.status === "success" && (
-                              <>
-                                <span className="text-green-700">{formatNumber(run.uniqueParts)} parts</span>
-                                <span className="text-blue-700">{formatNumber(run.newDeals)} new deals</span>
-                              </>
-                            )}
-                          </div>
-                          {run.status === "fail" && run.errorSummary && (
-                            <p className="text-xs text-red-600 mt-1 ml-6 truncate">{run.errorSummary}</p>
-                          )}
-                        </div>
-
-                        {run.status === "success" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="ml-4 shrink-0 gap-1.5"
-                            disabled={historyLoading === run.id}
-                            onClick={() => loadHistoryRun(run.id)}
-                          >
-                            {historyLoading === run.id ? (
-                              <>
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                Loading...
-                              </>
-                            ) : (
-                              <>
-                                <RefreshCw className="h-3.5 w-3.5" />
-                                Load Results
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {activePage === "settings" && (
           <div className="max-w-2xl mx-auto px-8 py-8">

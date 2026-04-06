@@ -31,14 +31,8 @@ pnpm workspace monorepo using TypeScript. Contains a Parts Analysis Dashboard th
 ### API Server (`artifacts/api-server`)
 - Express 5 backend
 - `POST /api/analysis/run` — accepts file uploads (multipart), runs Python analysis, returns JSON
-  - **Smart caching**: Check A (file name match) + Check B (row count match) + params match → returns last successful run's cached result
-  - **Exact hash cache**: SHA-256 hash of both files + params used as cache key
-  - Returns `cached: true` and `cacheReason` when serving from cache
-- `GET /api/analysis/history` — returns run log (last 50 runs)
-- `GET /api/analysis/history/:id` — loads cached result for a specific historical run
 - `GET /api/analysis/download?path=...` — serves generated Excel files for download
 - `GET /api/healthz` — health check
-- **Run Log** (`/tmp/analysis_runs.json`): Tracks fileName, rowCount, uploadTime, status, errorSummary, cacheKey, result stats
 
 ## Python Analysis Script
 
