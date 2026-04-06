@@ -30,6 +30,10 @@ import {
   SlidersHorizontal,
   CloudUpload,
   X,
+  Clock,
+  RefreshCw,
+  XCircle,
+  Loader2,
 } from "lucide-react";
 import {
   BarChart,
@@ -287,7 +291,24 @@ function SourceDataView({
   );
 }
 
-type NavPage = "process" | "dashboard" | "results" | "source_national" | "source_bookings" | "settings";
+interface RunLogEntry {
+  id: string;
+  nationalFileName: string;
+  bookingsFileName: string;
+  nationalRowCount: number;
+  cutoffYear: string;
+  faiThreshold: string;
+  uploadTime: string;
+  status: "success" | "fail";
+  errorSummary: string;
+  cacheKey: string;
+  uniqueParts: number;
+  newDeals: number;
+  pdInfo: number;
+  elapsedSeconds: number;
+}
+
+type NavPage = "process" | "dashboard" | "results" | "source_national" | "source_bookings" | "history" | "settings";
 
 export default function Dashboard() {
   const [bookingsFile, setBookingsFile] = useState<File | null>(null);
@@ -315,6 +336,38 @@ export default function Dashboard() {
     return "process";
   });
   const [wasCached, setWasCached] = useState(false);
+  const [cacheReason, setCacheReason] = useState("");
+  const [runHistory, setRunHistory] = useState<RunLogEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/analysis/history`)
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setRunHistory(data); })
+      .catch(() => {});
+  }, [result]);
+
+  const loadHistoryRun = async (runId: string) => {
+    setHistoryLoading(runId);
+    try {
+      const resp = await fetch(`${API_BASE}/analysis/history/${runId}`);
+      if (!resp.ok) {
+        const err = await resp.json();
+        setError(err.error || "Failed to load historical run");
+        return;
+      }
+      const data = await resp.json();
+      setResult(data);
+      setWasCached(true);
+      setCacheReason("Loaded from run history");
+      try { localStorage.setItem("analysis_result", JSON.stringify(data)); } catch {}
+      setActivePage("dashboard");
+    } catch (err: any) {
+      setError(err.message || "Failed to load");
+    } finally {
+      setHistoryLoading(null);
+    }
+  };
 
   const handleDrop = useCallback(
     (setter: (f: File) => void, e: React.DragEvent) => {
@@ -360,10 +413,13 @@ export default function Dashboard() {
 
       const data = await resp.json();
       const isCached = data.cached === true;
+      const reason = data.cacheReason || "";
       delete data.cached;
+      delete data.cacheReason;
       const analysisData: AnalysisResult = data;
       setResult(analysisData);
       setWasCached(isCached);
+      setCacheReason(reason);
       try { localStorage.setItem("analysis_result", JSON.stringify(analysisData)); } catch {}
       setProgress(100);
       setActiveTab("summary");
@@ -387,6 +443,7 @@ export default function Dashboard() {
     { id: "results" as NavPage, label: "Results & Export", icon: FileOutput, disabled: !result },
     { id: "source_national" as NavPage, label: "Python National", icon: FileSpreadsheet, disabled: !result },
     { id: "source_bookings" as NavPage, label: "Natman Bookings", icon: FileSpreadsheet, disabled: !result },
+    { id: "history" as NavPage, label: "Run History", icon: Clock },
     { id: "settings" as NavPage, label: "Settings", icon: Settings },
   ];
 
@@ -666,7 +723,7 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
                   Analysis completed in {result.elapsed_seconds}s
                   {wasCached && (
-                    <Badge variant="secondary" className="text-xs">Cached</Badge>
+                    <Badge variant="secondary" className="text-xs" title={cacheReason}>Cached</Badge>
                   )}
                 </p>
               </div>
@@ -986,6 +1043,87 @@ export default function Dashboard() {
             />
           );
         })()}
+
+        {activePage === "history" && (
+          <div className="px-8 py-8">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-[#1B2A4A]">Run History</h1>
+              <p className="text-sm text-muted-foreground mt-1">View past pipeline runs and load previous results</p>
+            </div>
+
+            {runHistory.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Clock className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
+                  <p className="text-muted-foreground">No pipeline runs yet. Process files to see run history.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {runHistory.map((run) => (
+                  <Card key={run.id} className={`transition-all hover:shadow-md ${run.status === "fail" ? "border-red-200" : ""}`}>
+                    <CardContent className="py-4 px-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {run.status === "success" ? (
+                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+                            )}
+                            <span className="font-semibold text-sm text-[#1B2A4A] truncate">
+                              {run.nationalFileName}
+                            </span>
+                            <Badge variant={run.status === "success" ? "default" : "destructive"} className="text-xs shrink-0">
+                              {run.status === "success" ? "Success" : "Failed"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground ml-6">
+                            <span>{new Date(run.uploadTime).toLocaleString()}</span>
+                            <span>{formatNumber(run.nationalRowCount)} rows</span>
+                            <span>Cutoff: {run.cutoffYear}</span>
+                            <span>FAI: {run.faiThreshold}</span>
+                            {run.status === "success" && (
+                              <>
+                                <span className="text-green-700">{formatNumber(run.uniqueParts)} parts</span>
+                                <span className="text-blue-700">{formatNumber(run.newDeals)} new deals</span>
+                              </>
+                            )}
+                          </div>
+                          {run.status === "fail" && run.errorSummary && (
+                            <p className="text-xs text-red-600 mt-1 ml-6 truncate">{run.errorSummary}</p>
+                          )}
+                        </div>
+
+                        {run.status === "success" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="ml-4 shrink-0 gap-1.5"
+                            disabled={historyLoading === run.id}
+                            onClick={() => loadHistoryRun(run.id)}
+                          >
+                            {historyLoading === run.id ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-3.5 w-3.5" />
+                                Load Results
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {activePage === "settings" && (
           <div className="max-w-2xl mx-auto px-8 py-8">
