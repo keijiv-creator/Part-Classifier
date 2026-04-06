@@ -97,9 +97,8 @@ interface AnalysisResult {
     pd_info: any[];
   };
   source_data: {
-    national_headers: string[];
-    national_rows: any[];
-    landmark_rows: any[];
+    bookings_sheets: Record<string, { headers: string[]; rows: any[] }>;
+    national_sheets: Record<string, { headers: string[]; rows: any[] }>;
   };
 }
 
@@ -237,6 +236,55 @@ function DataTable({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+function SourceDataView({
+  title,
+  subtitle,
+  sheets,
+  sheetNames,
+  defaultSheet,
+}: {
+  title: string;
+  subtitle: string;
+  sheets: Record<string, { headers: string[]; rows: any[] }>;
+  sheetNames: string[];
+  defaultSheet: string;
+}) {
+  const [activeSheet, setActiveSheet] = useState(defaultSheet);
+  const totalRows = Object.values(sheets).reduce((sum, s) => sum + s.rows.length, 0);
+
+  return (
+    <div className="px-8 py-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-[#1B2A4A]">{title}</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {subtitle} — {sheetNames.length} sheet{sheetNames.length !== 1 ? "s" : ""}, {formatNumber(totalRows)} total rows
+        </p>
+      </div>
+      <Tabs value={activeSheet} onValueChange={setActiveSheet}>
+        <TabsList className="mb-4">
+          {sheetNames.map((name) => (
+            <TabsTrigger key={name} value={name}>
+              {name} ({formatNumber(sheets[name].rows.length)})
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {sheetNames.map((name) => (
+          <TabsContent key={name} value={name}>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6">
+                <DataTable
+                  data={sheets[name].rows}
+                  columns={sheets[name].headers.map((h) => ({ key: h, label: h }))}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 }
@@ -895,53 +943,35 @@ export default function Dashboard() {
           </div>
         )}
 
-        {activePage === "source_national" && result && (
-          <div className="px-8 py-8">
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-[#1B2A4A]">Python National — Raw Quote Data</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                {formatNumber(result.source_data.national_rows.length)} rows from the uploaded National quote export
-              </p>
-            </div>
-            <Card className="border-0 shadow-sm">
-              <CardContent className="pt-6">
-                <DataTable
-                  data={result.source_data.national_rows}
-                  columns={(result.source_data.national_headers || []).map((h) => ({
-                    key: h,
-                    label: h,
-                  }))}
-                />
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        {activePage === "source_national" && result && (() => {
+          const sheets = result.source_data.national_sheets;
+          const sheetNames = Object.keys(sheets);
+          const defaultSheet = sheetNames[0] || "";
+          return (
+            <SourceDataView
+              title="Python National"
+              subtitle="Output from the Python National package"
+              sheets={sheets}
+              sheetNames={sheetNames}
+              defaultSheet={defaultSheet}
+            />
+          );
+        })()}
 
-        {activePage === "source_bookings" && result && (
-          <div className="px-8 py-8">
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-[#1B2A4A]">Natman Bookings — LANDMARK Data</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                {formatNumber(result.source_data.landmark_rows.length)} rows from the uploaded Bookings LANDMARK sheet
-              </p>
-            </div>
-            <Card className="border-0 shadow-sm">
-              <CardContent className="pt-6">
-                <DataTable
-                  data={result.source_data.landmark_rows}
-                  columns={
-                    result.source_data.landmark_rows.length > 0
-                      ? Object.keys(result.source_data.landmark_rows[0]).map((h) => ({
-                          key: h,
-                          label: h,
-                        }))
-                      : []
-                  }
-                />
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        {activePage === "source_bookings" && result && (() => {
+          const sheets = result.source_data.bookings_sheets;
+          const sheetNames = Object.keys(sheets);
+          const defaultSheet = sheetNames[0] || "";
+          return (
+            <SourceDataView
+              title="Natman Bookings"
+              subtitle="Output from the Natman Bookings package"
+              sheets={sheets}
+              sheetNames={sheetNames}
+              defaultSheet={defaultSheet}
+            />
+          );
+        })()}
 
         {activePage === "settings" && (
           <div className="max-w-2xl mx-auto px-8 py-8">

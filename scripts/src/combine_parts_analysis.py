@@ -177,24 +177,31 @@ def load_landmark(bookings_file):
     return landmark, raw_landmark_rows
 
 
-def load_raw_national(input_file):
-    src = openpyxl.load_workbook(input_file, data_only=True, read_only=True)
-    ws = src.active
-    headers = None
-    raw_rows = []
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0:
-            headers = [str(h).strip() if h else f'COL_{idx}' for idx, h in enumerate(row)]
-            continue
-        row_dict = {}
-        for idx, h in enumerate(headers):
-            val = row[idx] if idx < len(row) else None
-            if hasattr(val, 'strftime'):
-                val = val.strftime('%Y-%m-%d')
-            row_dict[h] = str(val) if val is not None else ''
-        raw_rows.append(row_dict)
-    src.close()
-    return raw_rows, headers
+def load_all_sheets(filepath):
+    wb = openpyxl.load_workbook(filepath, data_only=True, read_only=True)
+    result = {}
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        headers = None
+        rows = []
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            if i == 0:
+                headers = [str(h).strip() if h else f'COL_{idx}' for idx, h in enumerate(row)]
+                continue
+            row_dict = {}
+            for idx, h in enumerate(headers):
+                val = row[idx] if idx < len(row) else None
+                if hasattr(val, 'strftime'):
+                    val = val.strftime('%Y-%m-%d')
+                elif val is not None:
+                    val = str(val)
+                else:
+                    val = ''
+                row_dict[h] = val
+            rows.append(row_dict)
+        result[sheet_name] = {'headers': headers or [], 'rows': rows}
+    wb.close()
+    return result
 
 
 def transform_raw_data(input_file, org_id_map):
@@ -669,9 +676,13 @@ def main(cli_args=None):
 
     landmark, raw_landmark_rows = load_landmark(bookings_file)
 
-    print("  Loading raw National quote data for source view...")
-    raw_national_rows, raw_national_headers = load_raw_national(input_file)
-    print(f"  Raw National data: {len(raw_national_rows):,} rows, {len(raw_national_headers)} columns")
+    print("  Loading source file sheets for viewing...")
+    bookings_sheets = load_all_sheets(bookings_file)
+    for sn, sd in bookings_sheets.items():
+        print(f"    Bookings/{sn}: {len(sd['rows']):,} rows")
+    national_sheets = load_all_sheets(input_file)
+    for sn, sd in national_sheets.items():
+        print(f"    National/{sn}: {len(sd['rows']):,} rows")
 
     pd_cache = {}
     if pd_cache_file:
@@ -1054,9 +1065,8 @@ def main(cli_args=None):
             'pd_info': pd_info_data,
         },
         'source_data': {
-            'national_headers': raw_national_headers,
-            'national_rows': raw_national_rows,
-            'landmark_rows': raw_landmark_rows,
+            'bookings_sheets': bookings_sheets,
+            'national_sheets': national_sheets,
         }
     }
 
