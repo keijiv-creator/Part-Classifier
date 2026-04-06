@@ -23,12 +23,17 @@ router.post(
       return;
     }
 
-    const bookingPath = files.booking_file[0].path;
-    const nationalPath = files.national_file[0].path;
     const outputDir = "/tmp/analysis_output_" + Date.now();
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    const bookingPath = files.booking_file[0].path + ".xlsx";
+    fs.renameSync(files.booking_file[0].path, bookingPath);
+    const nationalPath = files.national_file[0].path + ".xlsx";
+    fs.renameSync(files.national_file[0].path, nationalPath);
     const jsonOutput = path.join(outputDir, "result.json");
 
-    fs.mkdirSync(outputDir, { recursive: true });
+    const emptyCache = path.join(outputDir, "empty_cache.json");
+    fs.writeFileSync(emptyCache, "{}");
 
     const args = [
       SCRIPT_PATH,
@@ -36,6 +41,7 @@ router.post(
       "--national-file", nationalPath,
       "--output-dir", outputDir,
       "--json-output", jsonOutput,
+      "--pd-cache-file", emptyCache,
     ];
 
     const cutoffYear = req.body?.cutoff_year;

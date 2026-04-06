@@ -331,35 +331,33 @@ def generate_natman_bookings(dev_booking_path, output_dir):
     natman_path = os.path.join(output_dir, f'Natman_Bookings_{datetime.now().strftime("%Y%m%d")}.xlsx')
     wb_out = openpyxl.Workbook()
 
+    def write_sheet_fast(ws, headers, data_rows):
+        write_header(ws, headers)
+        for row_data in data_rows:
+            cleaned = [clean_val(v) for v in row_data]
+            ws.append(cleaned)
+
     ws_main = wb_out.active
     ws_main.title = 'MAIN'
-    write_header(ws_main, BOOKING_HEADERS_DISPLAY)
-    for idx, r in enumerate(main_rows, 2):
-        write_row(ws_main, idx, r)
+    write_sheet_fast(ws_main, BOOKING_HEADERS_DISPLAY, main_rows)
 
     ws_unique = wb_out.create_sheet('UNIQUE')
     unique_headers = ['Database', 'Line Status', 'Order Date', 'Sales Order No',
                       'So Status', 'Quote No', 'Customer ID', 'Customer Name',
                       'SO line No', 'National Part ID', 'Customer Part No', 'Part Description']
-    write_header(ws_unique, unique_headers)
-    for idx, r in enumerate(unique_rows, 2):
-        write_row(ws_unique, idx, r)
+    write_sheet_fast(ws_unique, unique_headers, unique_rows)
 
     ws_totals = wb_out.create_sheet('TOTALS (By SO)')
     totals_headers = ['Order Date', 'Sales Order No', 'Quote No', 'Customer Name',
                       'NATIONAL PART ID', 'Customer Part No', 'Order Qty',
                       'Total Amount Ordered', 'Total Shipped Qty', 'Ful Fill Qty',
                       'Pending Qty', 'Pending Amount']
-    write_header(ws_totals, totals_headers)
-    for idx, r in enumerate(totals_rows, 2):
-        write_row(ws_totals, idx, r)
+    write_sheet_fast(ws_totals, totals_headers, totals_rows)
 
     ws_landmark = wb_out.create_sheet('LANDMARK')
     landmark_headers = ['NAT PART ID', 'CUST PART ID', 'FIRST ORDER DATE',
                         'FIRST ORDER NO', 'QUOTE NO']
-    write_header(ws_landmark, landmark_headers)
-    for idx, r in enumerate(landmark_rows, 2):
-        write_row(ws_landmark, idx, r)
+    write_sheet_fast(ws_landmark, landmark_headers, landmark_rows)
 
     wb_out.save(natman_path)
     print(f"  Saved Natman_Bookings: {natman_path}")
@@ -1099,10 +1097,16 @@ def main(cli_args=None):
     print(f"  Output: {OUTPUT_FILE}")
     print(f"{'=' * 60}")
 
+    MAX_SOURCE_ROWS = 5000
     print("  Loading generated output files for dashboard viewing...")
     natman_sheets = load_all_sheets(natman_path)
     for sn, sd in natman_sheets.items():
-        print(f"    Natman_Bookings/{sn}: {len(sd['rows']):,} rows")
+        total = len(sd['rows'])
+        if total > MAX_SOURCE_ROWS:
+            sd['rows'] = sd['rows'][:MAX_SOURCE_ROWS]
+            print(f"    Natman_Bookings/{sn}: {total:,} rows (capped to {MAX_SOURCE_ROWS:,} for display)")
+        else:
+            print(f"    Natman_Bookings/{sn}: {total:,} rows")
     pdsync_sheets = load_all_sheets(pdsync_path)
     for sn, sd in pdsync_sheets.items():
         print(f"    PDSync/{sn}: {len(sd['rows']):,} rows")
