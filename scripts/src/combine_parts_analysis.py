@@ -965,11 +965,21 @@ def main(cli_args=None):
     print(f"\n[6/7] Pipedrive deal detail enrichment...")
     deal_details = {}
     deal_ids = [r['pd_id'] for r in matched_rows if r['pd_id']]
-    if deal_ids and API_TOKEN and os.environ.get('FETCH_PD_DETAILS', '').lower() == 'true':
+
+    deals_export_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pd_deals_export.json')
+    if os.path.exists(deals_export_file):
+        with open(deals_export_file, 'r') as f:
+            all_deals = json.load(f)
+        for did in deal_ids:
+            dd = all_deals.get(str(did))
+            if dd:
+                deal_details[did] = dd
+        print(f"  Loaded {len(deal_details)}/{len(deal_ids)} deal details from local export ({len(all_deals)} total deals)")
+    elif deal_ids and API_TOKEN and os.environ.get('FETCH_PD_DETAILS', '').lower() == 'true':
         deal_details = fetch_deal_details(deal_ids)
     else:
-        print(f"  Skipping live API fetch ({len(deal_ids)} deals matched via cache)")
-        print(f"  Set FETCH_PD_DETAILS=true to enable live Pipedrive enrichment")
+        print(f"  No deals export found and live API fetch disabled ({len(deal_ids)} deals matched)")
+        print(f"  Place pd_deals_export.json in scripts/src/ or set FETCH_PD_DETAILS=true")
 
     print(f"\n[7/7] Writing output spreadsheet...")
     wb = openpyxl.Workbook()
@@ -1208,8 +1218,8 @@ def main(cli_args=None):
 
     total_rev_new = sum(r['mapped_med_rev'] for r in new_deals_data)
     total_rev_pd = sum(r['value'] for r in pd_info_data)
-    won_deals = [r for r in pd_info_data if r['status'] == 'won']
-    open_deals = [r for r in pd_info_data if r['status'] == 'open']
+    won_deals = [r for r in pd_info_data if r['status'].lower() == 'won']
+    open_deals = [r for r in pd_info_data if r['status'].lower() == 'open']
 
     status_counts = {}
     for r in pd_info_data:

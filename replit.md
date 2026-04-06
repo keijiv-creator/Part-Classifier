@@ -70,15 +70,17 @@ Located at `scripts/src/combine_parts_analysis.py`. Accepts two raw xlsx files d
 - Everything else → "New Part"
 
 ### Pipedrive Integration
-- Uses `PIPEDRIVE_API_KEY` environment secret
-- Bundled `scripts/src/pd_cache.json` — 2438 entries (489 with PD deal IDs, 1949 without)
-- Script auto-discovers bundled pd_cache.json if no `--pd-cache-file` argument provided
-- Live Pipedrive API fetch gated behind `FETCH_PD_DETAILS=true` env var (avoids timeout on ~200+ deals)
-- PD cache maps customer_part → deal_id for split into New_Deals vs PD_Info
+- Uses `PIPEDRIVE_API_KEY` environment secret (for live search fallback only)
+- Bundled `scripts/src/pd_cache.json` — 6,893 customer parts mapped to deal IDs (rebuilt from deals export)
+- Bundled `scripts/src/pd_deals_export.json` — 13,805 full deal records with all detail fields (title, value, status, label, stage, industry, deal type, mfg type, platform, PO, quote number, phase times, won/lost times)
+- Script auto-discovers both files; instant enrichment with zero API calls
+- Fallback: live Pipedrive API fetch gated behind `FETCH_PD_DETAILS=true` env var
+- To refresh: upload new Pipedrive deals export xlsx, run conversion script
 
 ### Reference Data
-- `scripts/src/org_ids.csv` — 143 org ID mappings (bundled)
-- `scripts/src/pd_cache.json` — Pipedrive deal cache (bundled)
+- `scripts/src/org_ids.csv` — 143 org ID mappings
+- `scripts/src/pd_cache.json` — customer_part → deal_id mapping (6,893 entries)
+- `scripts/src/pd_deals_export.json` — full Pipedrive deal details (13,805 deals)
 
 ## Key Commands
 
