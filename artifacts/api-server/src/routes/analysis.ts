@@ -12,19 +12,19 @@ const SCRIPT_PATH = "/home/runner/workspace/scripts/src/combine_parts_analysis.p
 router.post(
   "/analysis/run",
   upload.fields([
-    { name: "bookings_zip", maxCount: 1 },
-    { name: "national_zip", maxCount: 1 },
+    { name: "booking_file", maxCount: 1 },
+    { name: "national_file", maxCount: 1 },
   ]),
   async (req: Request, res: Response) => {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
-    if (!files?.bookings_zip?.[0] || !files?.national_zip?.[0]) {
-      res.status(400).json({ error: "Both bookings_zip and national_zip files are required" });
+    if (!files?.booking_file?.[0] || !files?.national_file?.[0]) {
+      res.status(400).json({ error: "Both national_file and booking_file are required" });
       return;
     }
 
-    const bookingsPath = files.bookings_zip[0].path;
-    const nationalPath = files.national_zip[0].path;
+    const bookingPath = files.booking_file[0].path;
+    const nationalPath = files.national_file[0].path;
     const outputDir = "/tmp/analysis_output_" + Date.now();
     const jsonOutput = path.join(outputDir, "result.json");
 
@@ -32,8 +32,8 @@ router.post(
 
     const args = [
       SCRIPT_PATH,
-      "--bookings-zip", bookingsPath,
-      "--national-zip", nationalPath,
+      "--booking-file", bookingPath,
+      "--national-file", nationalPath,
       "--output-dir", outputDir,
       "--json-output", jsonOutput,
     ];
@@ -76,7 +76,7 @@ router.post(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     } finally {
-      try { fs.unlinkSync(bookingsPath); } catch {}
+      try { fs.unlinkSync(bookingPath); } catch {}
       try { fs.unlinkSync(nationalPath); } catch {}
     }
   }
@@ -84,15 +84,20 @@ router.post(
 
 router.get("/analysis/download", (req: Request, res: Response) => {
   const filePath = req.query.path as string;
-  if (!filePath || !fs.existsSync(filePath)) {
-    res.status(404).json({ error: "File not found" });
+  if (!filePath) {
+    res.status(400).json({ error: "Path required" });
     return;
   }
-  if (!filePath.startsWith("/tmp/")) {
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith("/tmp/")) {
     res.status(403).json({ error: "Access denied" });
     return;
   }
-  res.download(filePath, path.basename(filePath));
+  if (!fs.existsSync(resolved)) {
+    res.status(404).json({ error: "File not found" });
+    return;
+  }
+  res.download(resolved, path.basename(resolved));
 });
 
 export default router;

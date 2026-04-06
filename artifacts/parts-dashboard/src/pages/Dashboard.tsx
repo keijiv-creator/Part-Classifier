@@ -60,6 +60,8 @@ const CHART_COLORS = [
 
 interface AnalysisResult {
   output_file: string;
+  natman_bookings_file?: string;
+  pdsync_file?: string;
   elapsed_seconds: number;
   summary: {
     total_unique_parts: number;
@@ -244,23 +246,35 @@ function SourceDataView({
   sheets,
   sheetNames,
   defaultSheet,
+  downloadAction,
+  downloadLabel,
 }: {
   title: string;
   subtitle: string;
   sheets: Record<string, { headers: string[]; rows: any[] }>;
   sheetNames: string[];
   defaultSheet: string;
+  downloadAction?: () => void;
+  downloadLabel?: string;
 }) {
   const [activeSheet, setActiveSheet] = useState(defaultSheet);
   const totalRows = Object.values(sheets).reduce((sum, s) => sum + s.rows.length, 0);
 
   return (
     <div className="px-8 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#1B2A4A]">{title}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {subtitle} — {sheetNames.length} sheet{sheetNames.length !== 1 ? "s" : ""}, {formatNumber(totalRows)} total rows
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1B2A4A]">{title}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {subtitle} — {sheetNames.length} sheet{sheetNames.length !== 1 ? "s" : ""}, {formatNumber(totalRows)} total rows
+          </p>
+        </div>
+        {downloadAction && (
+          <Button onClick={downloadAction} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+            <Download className="h-4 w-4" />
+            {downloadLabel || "Download"}
+          </Button>
+        )}
       </div>
       <Tabs value={activeSheet} onValueChange={setActiveSheet}>
         <TabsList className="mb-4">
@@ -323,8 +337,8 @@ export default function Dashboard() {
     setProgress(10);
 
     const formData = new FormData();
-    formData.append("bookings_zip", bookingsFile);
-    formData.append("national_zip", nationalFile);
+    formData.append("booking_file", bookingsFile);
+    formData.append("national_file", nationalFile);
     formData.append("cutoff_year", cutoffYear);
     formData.append("fai_threshold", faiThreshold);
 
@@ -364,11 +378,21 @@ export default function Dashboard() {
     window.open(`${API_BASE}/analysis/download?path=${encodeURIComponent(result.output_file)}`, "_blank");
   };
 
+  const downloadNatmanBookings = () => {
+    if (!result?.natman_bookings_file) return;
+    window.open(`${API_BASE}/analysis/download?path=${encodeURIComponent(result.natman_bookings_file)}`, "_blank");
+  };
+
+  const downloadPDSync = () => {
+    if (!result?.pdsync_file) return;
+    window.open(`${API_BASE}/analysis/download?path=${encodeURIComponent(result.pdsync_file)}`, "_blank");
+  };
+
   const navItems = [
     { id: "dashboard" as NavPage, label: "Dashboard", icon: LayoutDashboard, disabled: !result },
     { id: "process" as NavPage, label: "Process Files", icon: FolderInput },
     { id: "results" as NavPage, label: "Results & Export", icon: FileOutput, disabled: !result },
-    { id: "source_national" as NavPage, label: "Python National", icon: FileSpreadsheet, disabled: !result },
+    { id: "source_national" as NavPage, label: "National PDSync", icon: FileSpreadsheet, disabled: !result },
     { id: "source_bookings" as NavPage, label: "Natman Bookings", icon: FileSpreadsheet, disabled: !result },
     { id: "settings" as NavPage, label: "Settings", icon: Settings },
   ];
@@ -762,10 +786,24 @@ export default function Dashboard() {
                 <h1 className="text-2xl font-bold text-[#1B2A4A]">Results & Export</h1>
                 <p className="text-sm text-muted-foreground mt-1">Browse and export analysis results</p>
               </div>
-              <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
-                <Download className="h-4 w-4" />
-                Download Excel
-              </Button>
+              <div className="flex gap-2">
+                {result.natman_bookings_file && (
+                  <Button onClick={downloadNatmanBookings} variant="outline" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                    <Download className="h-4 w-4" />
+                    Natman Bookings
+                  </Button>
+                )}
+                {result.pdsync_file && (
+                  <Button onClick={downloadPDSync} variant="outline" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                    <Download className="h-4 w-4" />
+                    PDSync
+                  </Button>
+                )}
+                <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                  <Download className="h-4 w-4" />
+                  Combined Analysis
+                </Button>
+              </div>
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -923,11 +961,13 @@ export default function Dashboard() {
           const defaultSheet = sheetNames[0] || "";
           return (
             <SourceDataView
-              title="Python National"
-              subtitle="Output from the Python National package"
+              title="National PDSync"
+              subtitle="Generated PDSync / PD Upload Preview output"
               sheets={sheets}
               sheetNames={sheetNames}
               defaultSheet={defaultSheet}
+              downloadAction={downloadPDSync}
+              downloadLabel="Download PDSync"
             />
           );
         })()}
@@ -939,10 +979,12 @@ export default function Dashboard() {
           return (
             <SourceDataView
               title="Natman Bookings"
-              subtitle="Output from the Natman Bookings package"
+              subtitle="Generated Natman Bookings output (MAIN, UNIQUE, TOTALS, LANDMARK)"
               sheets={sheets}
               sheetNames={sheetNames}
               defaultSheet={defaultSheet}
+              downloadAction={downloadNatmanBookings}
+              downloadLabel="Download Natman Bookings"
             />
           );
         })()}

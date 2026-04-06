@@ -2,7 +2,7 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Contains a Parts Analysis Dashboard that combines data from Natman Bookings and Python National to generate repeat vs. new business analysis.
+pnpm workspace monorepo using TypeScript. Contains a Parts Analysis Dashboard that processes raw National QuoteData and Development Booking xlsx files to generate Natman Bookings, National PDSync, and a combined analysis with New Deals vs PD Info split.
 
 ## Stack
 
@@ -22,34 +22,46 @@ pnpm workspace monorepo using TypeScript. Contains a Parts Analysis Dashboard th
 
 ### Parts Analysis Dashboard (`artifacts/parts-dashboard`)
 - React + Vite data visualization dashboard at preview path `/`
-- Drag-and-drop file upload for Natman Bookings and Python National zip files
-- Configurable parameters: Quote Cutoff Year, FAI Threshold
+- Dark navy sidebar UI (National Pipeline Manager branding)
+- Drag-and-drop file upload for National QuoteData (.xlsx) and Development Booking (.xlsx)
+- Configurable parameters: Quote Cutoff Year, FAI Threshold, Pipedrive Sync toggle
 - Tabbed results: Sales Analytics, Charts, All Parts, New Deals, PD Info
+- Sidebar tabs for generated outputs: National PDSync, Natman Bookings
+- Download buttons for all generated files (Combined Analysis, PDSync, Natman Bookings)
 - KPI cards, pie charts, bar charts for sales analytics
-- Excel file download capability
 
 ### API Server (`artifacts/api-server`)
 - Express 5 backend
-- `POST /api/analysis/run` — accepts file uploads (multipart), runs Python analysis, returns JSON
+- `POST /api/analysis/run` — accepts xlsx file uploads (multipart: `national_file`, `booking_file`), runs Python analysis, returns JSON
 - `GET /api/analysis/download?path=...` — serves generated Excel files for download
 - `GET /api/healthz` — health check
 
 ## Python Analysis Script
 
-Located at `scripts/src/combine_parts_analysis.py`. Combines data from two source zip files:
-- **Natman Bookings**: Contains LANDMARK sheet with first order dates
-- **Python National**: Contains quote data, org_ids.csv, pd_cache.json
+Located at `scripts/src/combine_parts_analysis.py`. Accepts two raw xlsx files directly:
+- **National QuoteData**: Raw quote export (~130 columns, quote/part/customer data)
+- **Development Booking**: Raw booking data (19 columns, sales orders)
+
+### Pipeline Flow
+1. Process Development Booking → generates **Natman_Bookings** output (4 sheets: MAIN, UNIQUE, TOTALS, LANDMARK)
+2. Transform National QuoteData → consolidated rows → generates **National_PDSync_PDUploadPreview** output
+3. Search Pipedrive for each unique customer part ID to find existing deals
+4. Split by PD_ID: rows without PD match → **New_Deals**, rows with PD match → **PD_Info**
+5. Generate combined Parts_Analysis Excel (3 sheets: All_Unique_Parts, New_Deals, PD_Info)
 
 ### CLI Arguments
-- `--bookings-zip`: Path to Natman Bookings zip
-- `--national-zip`: Path to Python National zip
-- `--output-dir`: Output directory for Excel file
+- `--national-file`: Path to National QuoteData xlsx
+- `--booking-file`: Path to Development Booking xlsx
+- `--output-dir`: Output directory for Excel files
 - `--cutoff-year`: Quote date cutoff year (default: 2021)
 - `--fai-threshold`: FAI threshold 0-1 (default: 0.50)
 - `--json-output`: Path to write JSON summary for dashboard consumption
+- `--pd-cache-file`: Optional path to pd_cache.json (skips Pipedrive search)
 
-### Output
-- 3-sheet Excel file: All_Unique_Parts, New_Deals, PD_Info
+### Output Files
+- `Natman_Bookings_YYYYMMDD.xlsx` — Processed bookings (MAIN/UNIQUE/TOTALS/LANDMARK)
+- `National_PDSync_PDUploadPreview_YYYYMMDD.xlsx` — Consolidated PDSync output
+- `Parts_Analysis_YYYYMMDD_HHMMSS.xlsx` — Combined analysis (All_Unique_Parts/New_Deals/PD_Info)
 - JSON summary with analytics (when `--json-output` is specified)
 
 ### CALC_LABEL Logic
@@ -59,8 +71,12 @@ Located at `scripts/src/combine_parts_analysis.py`. Combines data from two sourc
 
 ### Pipedrive Integration
 - Uses `PIPEDRIVE_API_KEY` environment secret
+- Searches Pipedrive deals by customer_part custom field for each unique part
 - Fetches deal details for PD-matched parts
 - Translates field option IDs to human-readable labels (label, industry, deal_type, mfg_type, platform_company, stage_id)
+
+### Reference Data
+- `scripts/src/org_ids.csv` — 143 org ID mappings (bundled, no zip needed)
 
 ## Key Commands
 
@@ -69,6 +85,6 @@ Located at `scripts/src/combine_parts_analysis.py`. Combines data from two sourc
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
-- `python3 scripts/src/combine_parts_analysis.py` — run analysis directly
+- `python3 scripts/src/combine_parts_analysis.py --national-file <file> --booking-file <file> --output-dir <dir>` — run analysis directly
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.

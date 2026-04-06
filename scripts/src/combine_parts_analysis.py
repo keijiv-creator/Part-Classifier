@@ -17,16 +17,6 @@ ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 
 import argparse
 
-NATMAN_BOOKINGS_DIR = os.path.join(ROOT_DIR, 'attached_assets')
-PYTHON_NATIONAL_DIR = os.path.join(ROOT_DIR, 'attached_assets')
-
-NATMAN_ZIP = os.path.join(NATMAN_BOOKINGS_DIR, 'Natman_Bookings_v1.1_1775425508964.zip')
-PYTHON_NAT_ZIP = os.path.join(PYTHON_NATIONAL_DIR, 'Python_National_1775425508965.zip')
-
-EXTRACT_DIR = '/tmp/combine_data'
-NATMAN_EXTRACT = os.path.join(EXTRACT_DIR, 'natman_bookings')
-PYNAT_EXTRACT = os.path.join(EXTRACT_DIR, 'python_national')
-
 OUTPUT_DIR = os.path.join(ROOT_DIR, 'output')
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, f'Parts_Analysis_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx')
 
@@ -102,13 +92,13 @@ CENTER_ALIGN = Alignment(horizontal='center', vertical='center')
 BODY_ALIGN = Alignment(vertical='center')
 
 
-def extract_zips():
-    import zipfile
-    os.makedirs(NATMAN_EXTRACT, exist_ok=True)
-    os.makedirs(PYNAT_EXTRACT, exist_ok=True)
-    zipfile.ZipFile(NATMAN_ZIP).extractall(NATMAN_EXTRACT)
-    zipfile.ZipFile(PYTHON_NAT_ZIP).extractall(PYNAT_EXTRACT)
-    print("  Extracted zip files")
+BOOKING_HEADERS_DISPLAY = [
+    'Database', 'Order Date', 'Sales Order No', 'So Status', 'Quote No',
+    'Customer ID', 'Customer Name', 'SO line No', 'National Part ID',
+    'Customer Part No', 'Part Description', 'Order Qty', 'Line Status',
+    'Unit Price', 'Total Amount Ordered', 'Total Shipped Qty',
+    'Ful Fill Qty', 'Pending Qty', 'Pending Amount'
+]
 
 
 def find_file(base_dir, pattern):
@@ -132,49 +122,6 @@ def load_org_ids(filepath):
             if name and org_id:
                 org_map[name] = org_id
     return org_map
-
-
-def load_landmark(bookings_file):
-    wb = openpyxl.load_workbook(bookings_file, read_only=True, data_only=True)
-    if 'LANDMARK' not in wb.sheetnames:
-        print("  ERROR: LANDMARK sheet not found in bookings file")
-        wb.close()
-        return {}, []
-    ws = wb['LANDMARK']
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
-
-    if not rows:
-        return {}, []
-
-    headers = [str(h).strip().upper() if h else '' for h in rows[0]]
-    hi = {h: i for i, h in enumerate(headers)}
-
-    landmark = {}
-    raw_landmark_rows = []
-    for row in rows[1:]:
-        row_dict = {}
-        for h, idx in hi.items():
-            val = row[idx] if idx < len(row) else None
-            if hasattr(val, 'strftime'):
-                val = val.strftime('%Y-%m-%d')
-            row_dict[h] = str(val) if val is not None else ''
-        raw_landmark_rows.append(row_dict)
-
-        cust_part_raw = row[hi.get('CUST PART ID', 1)]
-        cust_part = str(cust_part_raw).strip().upper() if cust_part_raw is not None else ''
-        if cust_part and cust_part != 'NONE':
-            first_order_date = row[hi.get('FIRST ORDER DATE', 2)]
-            first_order_no = row[hi.get('FIRST ORDER NO', 3)]
-            quote_no = row[hi.get('QUOTE NO', 4)]
-            landmark[cust_part] = {
-                'first_order_date': first_order_date,
-                'first_order_no': first_order_no,
-                'quote_no': quote_no,
-            }
-
-    print(f"  Loaded {len(landmark)} LANDMARK entries")
-    return landmark, raw_landmark_rows
 
 
 def load_all_sheets(filepath):
@@ -202,6 +149,272 @@ def load_all_sheets(filepath):
         result[sheet_name] = {'headers': headers or [], 'rows': rows}
     wb.close()
     return result
+
+
+def generate_natman_bookings(dev_booking_path, output_dir):
+    print("  Reading Development Booking file...")
+    wb = openpyxl.load_workbook(dev_booking_path, read_only=True, data_only=True)
+    ws = wb.active
+    raw_headers = None
+    raw_rows = []
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            raw_headers = list(row)
+            continue
+        raw_rows.append(list(row))
+    wb.close()
+    print(f"  Loaded {len(raw_rows):,} booking rows")
+
+    hi = {str(h).strip(): idx for idx, h in enumerate(raw_headers) if h}
+
+    def get_val(row, col_name, fallback_idx=None):
+        for key in hi:
+            if key.replace('_', ' ').upper() == col_name.replace('_', ' ').upper():
+                return row[hi[key]] if hi[key] < len(row) else None
+            if key.replace(' ', '_').upper() == col_name.replace(' ', '_').upper():
+                return row[hi[key]] if hi[key] < len(row) else None
+        if fallback_idx is not None and fallback_idx < len(row):
+            return row[fallback_idx]
+        return None
+
+    col_map = {}
+    expected_cols = [
+        'Database', 'Order_Date', 'Sales_Order_No', 'So_Status', 'Quote_No',
+        'Customer_ID', 'Customer_Name', 'SO_line_No', 'National_Part_ID',
+        'Customer_Part_No', 'Part_Description', 'Order_Qty', 'Line_Status',
+        'Unit_Price', 'Total_Amount_Ordered', 'Total_Shipped_Qty',
+        'FulFill_Qty', 'Pending_Qty', 'Pending_Amount'
+    ]
+    for idx, col in enumerate(expected_cols):
+        for key in hi:
+            norm_key = key.replace('_', '').replace(' ', '').upper()
+            norm_col = col.replace('_', '').replace(' ', '').upper()
+            if norm_key == norm_col:
+                col_map[col] = hi[key]
+                break
+        if col not in col_map and idx < len(raw_headers):
+            col_map[col] = idx
+
+    def extract_row(row):
+        result = []
+        for col in expected_cols:
+            idx = col_map.get(col, None)
+            val = row[idx] if idx is not None and idx < len(row) else None
+            result.append(val)
+        return result
+
+    main_rows = [extract_row(r) for r in raw_rows]
+
+    nat_part_idx = expected_cols.index('National_Part_ID')
+    cust_part_idx = expected_cols.index('Customer_Part_No')
+    order_date_idx = expected_cols.index('Order_Date')
+    so_no_idx = expected_cols.index('Sales_Order_No')
+    quote_no_idx = expected_cols.index('Quote_No')
+    line_status_idx = expected_cols.index('Line_Status')
+    db_idx = expected_cols.index('Database')
+    so_status_idx = expected_cols.index('So_Status')
+    cust_id_idx = expected_cols.index('Customer_ID')
+    cust_name_idx = expected_cols.index('Customer_Name')
+    so_line_idx = expected_cols.index('SO_line_No')
+    part_desc_idx = expected_cols.index('Part_Description')
+    order_qty_idx = expected_cols.index('Order_Qty')
+    unit_price_idx = expected_cols.index('Unit_Price')
+    total_amt_idx = expected_cols.index('Total_Amount_Ordered')
+    shipped_idx = expected_cols.index('Total_Shipped_Qty')
+    fulfill_idx = expected_cols.index('FulFill_Qty')
+    pending_qty_idx = expected_cols.index('Pending_Qty')
+    pending_amt_idx = expected_cols.index('Pending_Amount')
+
+    unique_parts = {}
+    for r in main_rows:
+        cust_part = str(r[cust_part_idx]).strip() if r[cust_part_idx] else ''
+        if cust_part and cust_part not in unique_parts:
+            unique_parts[cust_part] = r
+
+    unique_rows = []
+    for cp, r in unique_parts.items():
+        unique_rows.append([
+            r[db_idx], r[line_status_idx], r[order_date_idx], r[so_no_idx],
+            r[so_status_idx], r[quote_no_idx], r[cust_id_idx], r[cust_name_idx],
+            r[so_line_idx], r[nat_part_idx], r[cust_part_idx], r[part_desc_idx]
+        ])
+
+    so_groups = defaultdict(lambda: {
+        'order_date': None, 'so_no': None, 'quote_no': None,
+        'cust_name': None, 'nat_part': None, 'cust_part': None,
+        'order_qty': 0, 'total_amt': 0, 'shipped': 0,
+        'fulfill': 0, 'pending_qty': 0, 'pending_amt': 0
+    })
+    for r in main_rows:
+        so_key = str(r[so_no_idx])
+        grp = so_groups[so_key]
+        if grp['order_date'] is None:
+            grp['order_date'] = r[order_date_idx]
+            grp['so_no'] = r[so_no_idx]
+            grp['quote_no'] = r[quote_no_idx]
+            grp['cust_name'] = r[cust_name_idx]
+            grp['nat_part'] = r[nat_part_idx]
+            grp['cust_part'] = r[cust_part_idx]
+        try:
+            grp['order_qty'] += float(r[order_qty_idx] or 0)
+        except (TypeError, ValueError):
+            pass
+        try:
+            val = r[total_amt_idx]
+            if val and str(val).strip() != '-':
+                grp['total_amt'] += float(val)
+        except (TypeError, ValueError):
+            pass
+        try:
+            grp['shipped'] += float(r[shipped_idx] or 0)
+        except (TypeError, ValueError):
+            pass
+        try:
+            grp['fulfill'] += float(r[fulfill_idx] or 0)
+        except (TypeError, ValueError):
+            pass
+        try:
+            val = r[pending_qty_idx]
+            if val and str(val).strip() != '-':
+                grp['pending_qty'] += float(val)
+        except (TypeError, ValueError):
+            pass
+        try:
+            val = r[pending_amt_idx]
+            if val and str(val).strip() != '-':
+                grp['pending_amt'] += float(val)
+        except (TypeError, ValueError):
+            pass
+
+    totals_rows = []
+    for so_key, grp in so_groups.items():
+        totals_rows.append([
+            grp['order_date'], grp['so_no'], grp['quote_no'],
+            grp['cust_name'], grp['nat_part'], grp['cust_part'],
+            grp['order_qty'], grp['total_amt'], grp['shipped'],
+            grp['fulfill'], grp['pending_qty'], grp['pending_amt']
+        ])
+
+    landmark_data = {}
+    for r in main_rows:
+        cust_part = str(r[cust_part_idx]).strip().upper() if r[cust_part_idx] else ''
+        if not cust_part:
+            continue
+        order_date = r[order_date_idx]
+        if not order_date or not hasattr(order_date, 'strftime'):
+            try:
+                if order_date and str(order_date).strip():
+                    order_date = datetime.strptime(str(order_date).strip()[:10], '%Y-%m-%d')
+                else:
+                    continue
+            except (ValueError, TypeError):
+                continue
+
+        if cust_part not in landmark_data or order_date < landmark_data[cust_part]['date']:
+            landmark_data[cust_part] = {
+                'date': order_date,
+                'nat_part': r[nat_part_idx],
+                'order_no': r[so_no_idx],
+                'quote_no': r[quote_no_idx],
+            }
+
+    landmark_rows = []
+    for cust_part, info in sorted(landmark_data.items()):
+        landmark_rows.append([
+            info['nat_part'], cust_part, info['date'],
+            info['order_no'], info['quote_no']
+        ])
+
+    print(f"  Generated: MAIN={len(main_rows):,}, UNIQUE={len(unique_rows):,}, "
+          f"TOTALS={len(totals_rows):,}, LANDMARK={len(landmark_rows):,}")
+
+    natman_path = os.path.join(output_dir, f'Natman_Bookings_{datetime.now().strftime("%Y%m%d")}.xlsx')
+    wb_out = openpyxl.Workbook()
+
+    ws_main = wb_out.active
+    ws_main.title = 'MAIN'
+    write_header(ws_main, BOOKING_HEADERS_DISPLAY)
+    for idx, r in enumerate(main_rows, 2):
+        write_row(ws_main, idx, r)
+
+    ws_unique = wb_out.create_sheet('UNIQUE')
+    unique_headers = ['Database', 'Line Status', 'Order Date', 'Sales Order No',
+                      'So Status', 'Quote No', 'Customer ID', 'Customer Name',
+                      'SO line No', 'National Part ID', 'Customer Part No', 'Part Description']
+    write_header(ws_unique, unique_headers)
+    for idx, r in enumerate(unique_rows, 2):
+        write_row(ws_unique, idx, r)
+
+    ws_totals = wb_out.create_sheet('TOTALS (By SO)')
+    totals_headers = ['Order Date', 'Sales Order No', 'Quote No', 'Customer Name',
+                      'NATIONAL PART ID', 'Customer Part No', 'Order Qty',
+                      'Total Amount Ordered', 'Total Shipped Qty', 'Ful Fill Qty',
+                      'Pending Qty', 'Pending Amount']
+    write_header(ws_totals, totals_headers)
+    for idx, r in enumerate(totals_rows, 2):
+        write_row(ws_totals, idx, r)
+
+    ws_landmark = wb_out.create_sheet('LANDMARK')
+    landmark_headers = ['NAT PART ID', 'CUST PART ID', 'FIRST ORDER DATE',
+                        'FIRST ORDER NO', 'QUOTE NO']
+    write_header(ws_landmark, landmark_headers)
+    for idx, r in enumerate(landmark_rows, 2):
+        write_row(ws_landmark, idx, r)
+
+    wb_out.save(natman_path)
+    print(f"  Saved Natman_Bookings: {natman_path}")
+
+    landmark_map = {}
+    for cust_part, info in landmark_data.items():
+        landmark_map[cust_part] = {
+            'first_order_date': info['date'],
+            'first_order_no': info['order_no'],
+            'quote_no': info['quote_no'],
+        }
+
+    return natman_path, landmark_map
+
+
+def generate_pdsync(consolidated_rows, pd_cache, output_dir):
+    pdsync_path = os.path.join(output_dir, f'National_PDSync_PDUploadPreview_{datetime.now().strftime("%Y%m%d")}.xlsx')
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'PD Upload Preview'
+
+    pdsync_headers = [
+        'PD_ID', 'PD_Title', 'ORG_ID', 'NAME', 'CUSTOMER_PART_ID',
+        'Current_PD_Stage', 'Phase_Label', 'Mapped_Status', 'Mapped_Probability',
+        'Mapped_Med_Rev', 'Mapped_PD_P1_Time', 'Mapped_PD_P2_Time',
+        'Mapped_PD_P3_Time', 'Mapped_PD_P4_Time', 'Mapped_PD_P5_Time',
+        'Quote_Number', 'Would_Update', 'DRY_RUN', 'Skip_Reason'
+    ]
+    write_header(ws, pdsync_headers)
+
+    for idx, cr in enumerate(consolidated_rows, 2):
+        cust_part = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
+        pd_id = pd_cache.get(cust_part)
+
+        if pd_id:
+            skip_reason = ''
+            would_update = 'Yes'
+        else:
+            pd_id = None
+            skip_reason = 'No existing PD match; candidate for new deal creation'
+            would_update = 'No'
+
+        write_row(ws, idx, [
+            pd_id, '', cr.get('org_id', ''), cr.get('name', ''),
+            cr.get('cust_part', ''), '', cr.get('phase_label', ''),
+            cr.get('mapped_status', ''), cr.get('mapped_probability', ''),
+            cr.get('mapped_med_rev', ''),
+            cr.get('mapped_pd_p1_time', ''), cr.get('mapped_pd_p2_time', ''),
+            '', cr.get('mapped_pd_p4_time', ''), cr.get('mapped_pd_p5_time', ''),
+            cr.get('quote_number', ''), would_update, 'Yes', skip_reason
+        ])
+
+    wb.save(pdsync_path)
+    print(f"  Saved PDSync: {pdsync_path}")
+    return pdsync_path
 
 
 def transform_raw_data(input_file, org_id_map):
@@ -426,7 +639,7 @@ def transform_raw_data(input_file, org_id_map):
                 consolidated_rows.append(make_consolidated(
                     status='Phase 4 - Production Opp', value=best_opp_rev,
                     p1_dt=earliest_p1, p2_dt=latest_p2, p4_dt=won_p2,
-                    p5_dt='', quote_row=most_recent_row, phase_label='Phase 4'
+                    p5_dt='', quote_row=best_opp_row, phase_label='Phase 4'
                 ))
             else:
                 consolidated_rows.append(make_consolidated(
@@ -594,22 +807,99 @@ def set_col_widths(ws, widths):
         ws.column_dimensions[get_column_letter(c)].width = w
 
 
+def search_pipedrive_deals(customer_parts):
+    if not API_TOKEN:
+        print("  WARNING: No PIPEDRIVE_API_KEY set, skipping Pipedrive search")
+        return {}
+
+    print(f"  Searching Pipedrive for {len(customer_parts)} unique customer parts...")
+    pd_cache = {}
+    searched = 0
+    found = 0
+    errors = 0
+
+    for cust_part in customer_parts:
+        if not cust_part or cust_part == 'NONE':
+            continue
+        try:
+            resp = requests.get(
+                f'{BASE_URL}/deals/search',
+                params={
+                    'api_token': API_TOKEN,
+                    'term': cust_part,
+                    'fields': 'custom_fields',
+                    'limit': 1,
+                },
+                timeout=30
+            )
+            if resp.status_code == 429:
+                print("  Rate limited, waiting 10s...")
+                time.sleep(10)
+                resp = requests.get(
+                    f'{BASE_URL}/deals/search',
+                    params={
+                        'api_token': API_TOKEN,
+                        'term': cust_part,
+                        'fields': 'custom_fields',
+                        'limit': 1,
+                    },
+                    timeout=30
+                )
+            if resp.status_code == 200:
+                data = resp.json().get('data', {})
+                items = data.get('items', []) if data else []
+                for item in (items or []):
+                    deal_item = item.get('item', {})
+                    deal_id = deal_item.get('id')
+                    if not deal_id:
+                        continue
+                    try:
+                        detail_resp = requests.get(
+                            f'{BASE_URL}/deals/{deal_id}',
+                            params={'api_token': API_TOKEN},
+                            timeout=30
+                        )
+                        if detail_resp.status_code == 200:
+                            deal_data = detail_resp.json().get('data', {})
+                            deal_cust_part = str(deal_data.get(PD_FIELDS['customer_part'], '') or '').strip().upper()
+                            if deal_cust_part == cust_part:
+                                pd_cache[cust_part] = deal_id
+                                found += 1
+                                break
+                    except Exception:
+                        pass
+            else:
+                errors += 1
+
+            searched += 1
+            if searched % 50 == 0:
+                print(f"  Searched {searched}/{len(customer_parts)} parts ({found} found)...")
+                time.sleep(0.5)
+            elif searched % 10 == 0:
+                time.sleep(0.2)
+
+        except Exception as e:
+            errors += 1
+            if errors <= 3:
+                print(f"  Error searching for {cust_part}: {e}")
+
+    print(f"  Pipedrive search complete: {found} matches found out of {searched} searched ({errors} errors)")
+    return pd_cache
+
+
 def main(cli_args=None):
-    global NATMAN_ZIP, PYTHON_NAT_ZIP, OUTPUT_DIR, OUTPUT_FILE, QUOTE_SENT_CUTOFF_YEAR, FAI_THRESHOLD
+    global OUTPUT_DIR, OUTPUT_FILE, QUOTE_SENT_CUTOFF_YEAR, FAI_THRESHOLD
 
     parser = argparse.ArgumentParser(description='Parts Analysis')
-    parser.add_argument('--bookings-zip', help='Path to Natman Bookings zip')
-    parser.add_argument('--national-zip', help='Path to Python National zip')
+    parser.add_argument('--national-file', help='Path to National QuoteData xlsx')
+    parser.add_argument('--booking-file', help='Path to Development Booking xlsx')
     parser.add_argument('--output-dir', help='Output directory')
     parser.add_argument('--cutoff-year', type=int, help='Quote date cutoff year')
     parser.add_argument('--fai-threshold', type=float, help='FAI threshold (0-1)')
     parser.add_argument('--json-output', help='Path to write JSON summary')
+    parser.add_argument('--pd-cache-file', help='Path to pd_cache.json (optional)')
     args = parser.parse_args(cli_args)
 
-    if args.bookings_zip:
-        NATMAN_ZIP = args.bookings_zip
-    if args.national_zip:
-        PYTHON_NAT_ZIP = args.national_zip
     if args.output_dir:
         OUTPUT_DIR = args.output_dir
         OUTPUT_FILE = os.path.join(OUTPUT_DIR, f'Parts_Analysis_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx')
@@ -618,91 +908,61 @@ def main(cli_args=None):
     if args.fai_threshold is not None:
         FAI_THRESHOLD = args.fai_threshold
 
+    national_file = args.national_file
+    booking_file = args.booking_file
+
+    if not national_file or not os.path.exists(national_file):
+        print("  ERROR: National QuoteData file is required (--national-file)")
+        sys.exit(1)
+    if not booking_file or not os.path.exists(booking_file):
+        print("  ERROR: Development Booking file is required (--booking-file)")
+        sys.exit(1)
+
     start_time = time.time()
     print("=" * 60)
-    print("  PARTS ANALYSIS — Combined Bookings + National Data")
+    print("  PARTS ANALYSIS — National QuoteData + Development Booking")
     print("=" * 60)
 
-    print("\n[1/6] Extracting data files...")
-    extract_zips()
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    bookings_file = find_file(NATMAN_EXTRACT, 'Natman_Bookings_')
-    if bookings_file and not bookings_file.endswith('.xlsx'):
-        bookings_file = None
-    if not bookings_file:
-        for root, dirs, files in os.walk(NATMAN_EXTRACT):
-            for f in files:
-                if f.endswith('.xlsx') and 'Booking' in f:
-                    bookings_file = os.path.join(root, f)
-                    break
-    if not bookings_file:
-        for root, dirs, files in os.walk(NATMAN_EXTRACT):
-            for f in files:
-                if f.endswith('.xlsx'):
-                    bookings_file = os.path.join(root, f)
-                    break
-    if not bookings_file:
-        print("  ERROR: Could not find Natman Bookings output file (.xlsx)")
-        sys.exit(1)
+    print(f"\n[1/7] Processing Development Booking...")
+    print(f"  Input: {os.path.basename(booking_file)}")
+    natman_path, landmark = generate_natman_bookings(booking_file, OUTPUT_DIR)
 
-    input_file = find_file(PYNAT_EXTRACT, 'National_QuoteData_')
-    if not input_file:
-        input_file = find_file(PYNAT_EXTRACT, 'QuoteData_')
-    if not input_file:
-        all_files = []
-        for root, dirs, files in os.walk(PYNAT_EXTRACT):
-            for f in files:
-                if f.endswith('.xlsx'):
-                    all_files.append(os.path.join(root, f))
-        if all_files:
-            input_file = all_files[0]
-    if not input_file:
-        print("  ERROR: Could not find National QuoteData input file")
-        sys.exit(1)
-
+    print(f"\n[2/7] Loading reference data...")
     bundled_org_ids = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'org_ids.csv')
-    if os.path.exists(bundled_org_ids):
-        org_ids_file = bundled_org_ids
-    else:
-        org_ids_file = find_file(PYNAT_EXTRACT, 'org_ids.csv')
-    pd_cache_file = find_file(PYNAT_EXTRACT, 'pd_cache.json')
-
-    print(f"  Bookings: {os.path.basename(bookings_file)}")
-    print(f"  Quote Data: {os.path.basename(input_file)}")
-
-    print("\n[2/6] Loading reference data...")
-    org_id_map = load_org_ids(org_ids_file) if org_ids_file else {}
+    org_id_map = load_org_ids(bundled_org_ids) if os.path.exists(bundled_org_ids) else {}
     print(f"  Loaded {len(org_id_map)} org ID mappings")
 
-    landmark, raw_landmark_rows = load_landmark(bookings_file)
+    print(f"\n[3/7] Transforming raw quote data...")
+    print(f"  Input: {os.path.basename(national_file)}")
+    consolidated_rows = transform_raw_data(national_file, org_id_map)
 
-    print("  Loading source file sheets for viewing...")
-    bookings_sheets = load_all_sheets(bookings_file)
-    for sn, sd in bookings_sheets.items():
-        print(f"    Bookings/{sn}: {len(sd['rows']):,} rows")
-    national_sheets = load_all_sheets(input_file)
-    for sn, sd in national_sheets.items():
-        print(f"    National/{sn}: {len(sd['rows']):,} rows")
-
+    print(f"\n[4/7] Matching with Pipedrive...")
     pd_cache = {}
-    if pd_cache_file:
-        with open(pd_cache_file, 'r') as f:
+    if args.pd_cache_file and os.path.exists(args.pd_cache_file):
+        with open(args.pd_cache_file, 'r') as f:
             raw_cache = json.load(f)
         pd_cache = {k.strip().upper(): v for k, v in raw_cache.items() if v is not None}
-        print(f"  Loaded {len(pd_cache)} PD cache entries (with deal IDs)")
+        print(f"  Loaded {len(pd_cache)} PD cache entries from file")
+    else:
+        unique_parts = set()
+        for cr in consolidated_rows:
+            cp = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
+            if cp and not cp.startswith('_BLANK_'):
+                unique_parts.add(cp)
+        pd_cache = search_pipedrive_deals(sorted(unique_parts))
 
-    print("\n[3/6] Transforming raw quote data...")
-    consolidated_rows = transform_raw_data(input_file, org_id_map)
-
-    print("\n[4/6] Matching with Pipedrive cache...")
     matched_rows, unmatched_rows = match_with_pd_cache(consolidated_rows, pd_cache)
 
-    print("\n[5/6] Fetching Pipedrive deal details for matched rows...")
+    print(f"\n[5/7] Generating PDSync output...")
+    pdsync_path = generate_pdsync(consolidated_rows, pd_cache, OUTPUT_DIR)
+
+    print(f"\n[6/7] Fetching Pipedrive deal details for matched rows...")
     deal_ids = [r['pd_id'] for r in matched_rows if r['pd_id']]
     deal_details = fetch_deal_details(deal_ids)
 
-    print("\n[6/6] Writing output spreadsheet...")
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    print(f"\n[7/7] Writing output spreadsheet...")
     wb = openpyxl.Workbook()
 
     ws_parts = wb.active
@@ -839,6 +1099,14 @@ def main(cli_args=None):
     print(f"  Output: {OUTPUT_FILE}")
     print(f"{'=' * 60}")
 
+    print("  Loading generated output files for dashboard viewing...")
+    natman_sheets = load_all_sheets(natman_path)
+    for sn, sd in natman_sheets.items():
+        print(f"    Natman_Bookings/{sn}: {len(sd['rows']):,} rows")
+    pdsync_sheets = load_all_sheets(pdsync_path)
+    for sn, sd in pdsync_sheets.items():
+        print(f"    PDSync/{sn}: {len(sd['rows']):,} rows")
+
     new_deals_data = []
     for cr in unmatched_rows:
         cust_part = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
@@ -972,6 +1240,8 @@ def main(cli_args=None):
 
     json_result = {
         'output_file': OUTPUT_FILE,
+        'natman_bookings_file': natman_path,
+        'pdsync_file': pdsync_path,
         'elapsed_seconds': round(elapsed, 1),
         'summary': {
             'total_unique_parts': len(all_parts_sorted),
@@ -1007,8 +1277,8 @@ def main(cli_args=None):
             'pd_info': pd_info_data,
         },
         'source_data': {
-            'bookings_sheets': bookings_sheets,
-            'national_sheets': national_sheets,
+            'bookings_sheets': natman_sheets,
+            'national_sheets': pdsync_sheets,
         }
     }
 
