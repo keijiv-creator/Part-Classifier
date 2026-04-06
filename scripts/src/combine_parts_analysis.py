@@ -797,60 +797,6 @@ def main(cli_args=None):
     nc_count = sum(1 for r in range(2, len(unmatched_rows) + 2) if ws_new.cell(row=r, column=15).value == 'New Customer')
     print(f"  New_Deals: {len(unmatched_rows)} rows ({repeat_count} Repeat, {new_count} New Part, {nc_count} New Customer)")
 
-    ws_repeat = wb.create_sheet("Repeat_Deals")
-    repeat_headers = list(new_headers)
-    write_header(ws_repeat, repeat_headers)
-    repeat_formats = list(new_formats)
-    repeat_row_idx = 2
-    for cr in unmatched_rows:
-        cust_part = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
-        lm = landmark.get(cust_part, {})
-        first_order_date = lm.get('first_order_date', '')
-        first_order_no = lm.get('first_order_no', '')
-        lm_quote_no = lm.get('quote_no', '')
-
-        mapped_prob = str(cr.get('mapped_probability', '')).strip().upper()
-        if mapped_prob == 'NC':
-            continue
-        is_repeat = False
-        p2_str = cr.get('mapped_pd_p2_time', '')
-        if first_order_date and p2_str:
-            try:
-                if hasattr(first_order_date, 'strftime'):
-                    fod = first_order_date
-                else:
-                    fod = datetime.strptime(str(first_order_date), '%Y-%m-%d')
-                if isinstance(p2_str, str) and p2_str:
-                    p2_date = datetime.strptime(p2_str, '%Y-%m-%d')
-                elif hasattr(p2_str, 'strftime'):
-                    p2_date = p2_str
-                else:
-                    p2_date = None
-                if p2_date and fod and p2_date > fod:
-                    is_repeat = True
-            except (ValueError, TypeError):
-                pass
-        if not is_repeat:
-            continue
-
-        write_row(ws_repeat, repeat_row_idx, [
-            cr.get('org_id', ''), cr.get('name', ''), cr.get('cust_part', ''),
-            cr.get('mapped_status', ''), cr.get('mapped_probability', ''),
-            cr.get('mapped_med_rev', ''),
-            cr.get('mapped_pd_p1_time', ''), cr.get('mapped_pd_p2_time', ''),
-            cr.get('mapped_pd_p4_time', ''), cr.get('mapped_pd_p5_time', ''),
-            cr.get('quote_number', ''),
-            first_order_date, first_order_no, lm_quote_no,
-            'Repeat'
-        ], repeat_formats)
-        repeat_row_idx += 1
-
-    total_repeat_rows = repeat_row_idx - 2
-    set_col_widths(ws_repeat, [10, 35, 22, 20, 18, 16, 14, 14, 14, 14, 14, 14, 14, 14, 12])
-    ws_repeat.freeze_panes = 'A2'
-    ws_repeat.auto_filter.ref = f"A1:O{total_repeat_rows + 1}"
-    print(f"  Repeat_Deals: {total_repeat_rows} rows")
-
     ws_pd = wb.create_sheet("PD_Info")
     pd_headers = [
         'PD_ID', 'CUSTOMER_PART_ID',
@@ -929,8 +875,6 @@ def main(cli_args=None):
             'landmark_quote_no': str(lm.get('quote_no', '')),
             'calc_label': calc_label,
         })
-
-    repeat_deals_data = [r for r in new_deals_data if r['calc_label'] == 'Repeat']
 
     pd_info_data = []
     for cr in matched_rows:
@@ -1032,7 +976,6 @@ def main(cli_args=None):
         'summary': {
             'total_unique_parts': len(all_parts_sorted),
             'new_deals_count': len(new_deals_data),
-            'repeat_deals_count': len(repeat_deals_data),
             'pd_info_count': len(pd_info_data),
             'total_new_deals_revenue': round(total_rev_new, 2),
             'total_pd_pipeline_value': round(total_rev_pd, 2),
@@ -1061,7 +1004,6 @@ def main(cli_args=None):
         'sheets': {
             'all_unique_parts': all_parts_data,
             'new_deals': new_deals_data,
-            'repeat_deals': repeat_deals_data,
             'pd_info': pd_info_data,
         },
         'source_data': {
