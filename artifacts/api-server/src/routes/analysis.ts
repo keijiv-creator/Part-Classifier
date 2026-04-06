@@ -179,13 +179,10 @@ router.post(
 
     const bookingsFile = files.bookings_zip[0];
     const nationalFile = files.national_zip[0];
+    const bookingsPath = bookingsFile.path;
+    const nationalPath = nationalFile.path;
     const nationalOrigName = nationalFile.originalname;
     const bookingsOrigName = bookingsFile.originalname;
-
-    const bookingsPath = path.join(path.dirname(bookingsFile.path), bookingsOrigName);
-    const nationalPath = path.join(path.dirname(nationalFile.path), nationalOrigName);
-    fs.renameSync(bookingsFile.path, bookingsPath);
-    fs.renameSync(nationalFile.path, nationalPath);
     const cutoffYear = req.body?.cutoff_year || "2021";
     const faiThreshold = req.body?.fai_threshold || "0.50";
 
