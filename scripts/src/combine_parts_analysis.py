@@ -103,11 +103,22 @@ BODY_ALIGN = Alignment(vertical='center')
 
 
 def extract_zips():
-    import zipfile
+    import zipfile, shutil
     os.makedirs(NATMAN_EXTRACT, exist_ok=True)
     os.makedirs(PYNAT_EXTRACT, exist_ok=True)
-    zipfile.ZipFile(NATMAN_ZIP).extractall(NATMAN_EXTRACT)
-    zipfile.ZipFile(PYTHON_NAT_ZIP).extractall(PYNAT_EXTRACT)
+
+    if zipfile.is_zipfile(NATMAN_ZIP) and not NATMAN_ZIP.endswith('.xlsx'):
+        zipfile.ZipFile(NATMAN_ZIP).extractall(NATMAN_EXTRACT)
+    else:
+        dest = os.path.join(NATMAN_EXTRACT, os.path.basename(NATMAN_ZIP))
+        shutil.copy2(NATMAN_ZIP, dest)
+
+    if zipfile.is_zipfile(PYTHON_NAT_ZIP) and not PYTHON_NAT_ZIP.endswith('.xlsx'):
+        zipfile.ZipFile(PYTHON_NAT_ZIP).extractall(PYNAT_EXTRACT)
+    else:
+        dest = os.path.join(PYNAT_EXTRACT, os.path.basename(PYTHON_NAT_ZIP))
+        shutil.copy2(PYTHON_NAT_ZIP, dest)
+
     print("  Extracted zip files")
 
 
