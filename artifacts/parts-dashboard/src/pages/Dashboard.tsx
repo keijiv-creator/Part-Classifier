@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -298,11 +298,23 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [result, setResult] = useState<AnalysisResult | null>(() => {
+    try {
+      const saved = localStorage.getItem("analysis_result");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
   const [activeTab, setActiveTab] = useState("summary");
   const [dragOver1, setDragOver1] = useState(false);
   const [dragOver2, setDragOver2] = useState(false);
-  const [activePage, setActivePage] = useState<NavPage>(result ? "dashboard" : "process");
+  const [activePage, setActivePage] = useState<NavPage>(() => {
+    try {
+      if (localStorage.getItem("analysis_result")) return "dashboard";
+    } catch {}
+    return "process";
+  });
+  const [wasCached, setWasCached] = useState(false);
 
   const handleDrop = useCallback(
     (setter: (f: File) => void, e: React.DragEvent) => {
@@ -346,8 +358,13 @@ export default function Dashboard() {
         throw new Error(err.error || "Analysis failed");
       }
 
-      const data: AnalysisResult = await resp.json();
-      setResult(data);
+      const data = await resp.json();
+      const isCached = data.cached === true;
+      delete data.cached;
+      const analysisData: AnalysisResult = data;
+      setResult(analysisData);
+      setWasCached(isCached);
+      try { localStorage.setItem("analysis_result", JSON.stringify(analysisData)); } catch {}
       setProgress(100);
       setActiveTab("summary");
       setActivePage("dashboard");
@@ -618,6 +635,26 @@ export default function Dashboard() {
                 </>
               )}
             </Button>
+
+            {result && !loading && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
+                  <p className="text-sm text-blue-800">
+                    Previous results available — {formatNumber(result.summary.total_unique_parts)} parts analyzed.
+                    Upload the same files to load cached results instantly.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-blue-600 hover:text-blue-800 shrink-0"
+                  onClick={() => setActivePage("dashboard")}
+                >
+                  View Results
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -626,8 +663,11 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-2xl font-bold text-[#1B2A4A]">Dashboard</h1>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
                   Analysis completed in {result.elapsed_seconds}s
+                  {wasCached && (
+                    <Badge variant="secondary" className="text-xs">Cached</Badge>
+                  )}
                 </p>
               </div>
               <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
