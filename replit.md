@@ -71,12 +71,14 @@ Located at `scripts/src/combine_parts_analysis.py`. Accepts two raw xlsx files d
 
 ### Pipedrive Integration
 - Uses `PIPEDRIVE_API_KEY` environment secret
-- Searches Pipedrive deals by customer_part custom field for each unique part
-- Fetches deal details for PD-matched parts
-- Translates field option IDs to human-readable labels (label, industry, deal_type, mfg_type, platform_company, stage_id)
+- Bundled `scripts/src/pd_cache.json` — 2438 entries (489 with PD deal IDs, 1949 without)
+- Script auto-discovers bundled pd_cache.json if no `--pd-cache-file` argument provided
+- Live Pipedrive API fetch gated behind `FETCH_PD_DETAILS=true` env var (avoids timeout on ~200+ deals)
+- PD cache maps customer_part → deal_id for split into New_Deals vs PD_Info
 
 ### Reference Data
-- `scripts/src/org_ids.csv` — 143 org ID mappings (bundled, no zip needed)
+- `scripts/src/org_ids.csv` — 143 org ID mappings (bundled)
+- `scripts/src/pd_cache.json` — Pipedrive deal cache (bundled)
 
 ## Key Commands
 

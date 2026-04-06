@@ -32,16 +32,12 @@ router.post(
     fs.renameSync(files.national_file[0].path, nationalPath);
     const jsonOutput = path.join(outputDir, "result.json");
 
-    const emptyCache = path.join(outputDir, "empty_cache.json");
-    fs.writeFileSync(emptyCache, "{}");
-
     const args = [
       SCRIPT_PATH,
       "--booking-file", bookingPath,
       "--national-file", nationalPath,
       "--output-dir", outputDir,
       "--json-output", jsonOutput,
-      "--pd-cache-file", emptyCache,
     ];
 
     const cutoffYear = req.body?.cutoff_year;

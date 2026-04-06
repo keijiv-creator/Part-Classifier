@@ -938,11 +938,17 @@ def main(cli_args=None):
 
     print(f"\n[4/7] Matching with Pipedrive...")
     pd_cache = {}
-    if args.pd_cache_file and os.path.exists(args.pd_cache_file):
-        with open(args.pd_cache_file, 'r') as f:
+    pd_cache_file = args.pd_cache_file
+    if not pd_cache_file:
+        bundled_cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pd_cache.json')
+        if os.path.exists(bundled_cache):
+            pd_cache_file = bundled_cache
+
+    if pd_cache_file and os.path.exists(pd_cache_file):
+        with open(pd_cache_file, 'r') as f:
             raw_cache = json.load(f)
         pd_cache = {k.strip().upper(): v for k, v in raw_cache.items() if v is not None}
-        print(f"  Loaded {len(pd_cache)} PD cache entries from file")
+        print(f"  Loaded {len(pd_cache)} PD cache entries from {os.path.basename(pd_cache_file)}")
     else:
         unique_parts = set()
         for cr in consolidated_rows:
@@ -956,9 +962,14 @@ def main(cli_args=None):
     print(f"\n[5/7] Generating PDSync output...")
     pdsync_path = generate_pdsync(consolidated_rows, pd_cache, OUTPUT_DIR)
 
-    print(f"\n[6/7] Fetching Pipedrive deal details for matched rows...")
+    print(f"\n[6/7] Pipedrive deal detail enrichment...")
+    deal_details = {}
     deal_ids = [r['pd_id'] for r in matched_rows if r['pd_id']]
-    deal_details = fetch_deal_details(deal_ids)
+    if deal_ids and API_TOKEN and os.environ.get('FETCH_PD_DETAILS', '').lower() == 'true':
+        deal_details = fetch_deal_details(deal_ids)
+    else:
+        print(f"  Skipping live API fetch ({len(deal_ids)} deals matched via cache)")
+        print(f"  Set FETCH_PD_DETAILS=true to enable live Pipedrive enrichment")
 
     print(f"\n[7/7] Writing output spreadsheet...")
     wb = openpyxl.Workbook()
@@ -1057,32 +1068,34 @@ def main(cli_args=None):
 
     ws_pd = wb.create_sheet("PD_Info")
     pd_headers = [
-        'PD_ID', 'CUSTOMER_PART_ID',
-        'title', 'value', 'status', 'won_time',
-        'org_name', 'org_id', 'stage_id', 'label',
-        'platform_company', 'deal_type', 'mfg_type', 'industry',
-        'quote_number', 'po_number',
-        'p1_time', 'p2_time', 'p3_time', 'p4_time', 'p5_time',
-        'part', 'customer_part'
+        'PD_ID', 'ORG_ID', 'NAME', 'CUSTOMER_PART_ID',
+        'Mapped_Status', 'Mapped_Probability', 'Mapped_Med_Rev',
+        'Mapped_PD_P1_Time', 'Mapped_PD_P2_Time',
+        'Mapped_PD_P4_Time', 'Mapped_PD_P5_Time',
+        'Quote_Number',
+        'FIRST_ORDER_DATE', 'FIRST_ORDER_NO', 'LANDMARK_QUOTE_NO',
+        'PD_title', 'PD_value', 'PD_status', 'PD_stage',
+        'PD_label', 'PD_industry', 'PD_deal_type', 'PD_mfg_type',
     ]
     write_header(ws_pd, pd_headers)
 
     for idx, cr in enumerate(matched_rows, 2):
         pd_id = cr.get('pd_id', '')
         dd = deal_details.get(pd_id, {})
+        cust_part = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
+        lm = landmark.get(cust_part, {})
         write_row(ws_pd, idx, [
-            pd_id, cr.get('cust_part', ''),
+            pd_id, cr.get('org_id', ''), cr.get('name', ''), cr.get('cust_part', ''),
+            cr.get('mapped_status', ''), cr.get('mapped_probability', ''),
+            cr.get('mapped_med_rev', ''),
+            cr.get('mapped_pd_p1_time', ''), cr.get('mapped_pd_p2_time', ''),
+            cr.get('mapped_pd_p4_time', ''), cr.get('mapped_pd_p5_time', ''),
+            cr.get('quote_number', ''),
+            lm.get('first_order_date', ''), lm.get('first_order_no', ''), lm.get('quote_no', ''),
             dd.get('title', ''), dd.get('value', ''),
-            dd.get('status', ''), dd.get('won_time', ''),
-            dd.get('org_name', ''), dd.get('org_id', ''),
-            dd.get('stage_id', ''), dd.get('label', ''),
-            dd.get('platform_company', ''), dd.get('deal_type', ''),
-            dd.get('mfg_type', ''), dd.get('industry', ''),
-            dd.get('quote_number', ''), dd.get('po_number', ''),
-            dd.get('p1_time', ''), dd.get('p2_time', ''),
-            dd.get('p3_time', ''), dd.get('p4_time', ''),
-            dd.get('p5_time', ''),
-            dd.get('part', ''), dd.get('customer_part', ''),
+            dd.get('status', ''), dd.get('stage_id', ''),
+            dd.get('label', ''), dd.get('industry', ''),
+            dd.get('deal_type', ''), dd.get('mfg_type', ''),
         ])
 
     set_col_widths(ws_pd, [10, 22, 30, 12, 10, 20, 30, 10, 10, 18, 18, 18, 18, 18, 14, 14, 12, 12, 12, 12, 12, 20, 20])
@@ -1152,23 +1165,35 @@ def main(cli_args=None):
     for cr in matched_rows:
         pd_id = cr.get('pd_id', '')
         dd = deal_details.get(pd_id, {})
+        cust_part_upper = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
+        lm_pd = landmark.get(cust_part_upper, {})
         pd_info_data.append({
             'pd_id': pd_id,
+            'org_id': str(cr.get('org_id', '')),
+            'name': str(cr.get('name', '')),
             'customer_part_id': str(cr.get('cust_part', '')),
-            'title': str(dd.get('title', '')),
+            'mapped_status': str(cr.get('mapped_status', '')),
+            'mapped_probability': str(cr.get('mapped_probability', '')),
+            'mapped_med_rev': float(cr.get('mapped_med_rev', 0) or 0),
+            'mapped_pd_p1_time': str(cr.get('mapped_pd_p1_time', '')),
+            'mapped_pd_p2_time': str(cr.get('mapped_pd_p2_time', '')),
+            'mapped_pd_p4_time': str(cr.get('mapped_pd_p4_time', '')),
+            'mapped_pd_p5_time': str(cr.get('mapped_pd_p5_time', '')),
+            'quote_number': str(cr.get('quote_number', '')),
+            'first_order_date': lm_pd.get('first_order_date', '').strftime('%Y-%m-%d') if hasattr(lm_pd.get('first_order_date', ''), 'strftime') else str(lm_pd.get('first_order_date', '')),
+            'first_order_no': str(lm_pd.get('first_order_no', '')),
+            'landmark_quote_no': str(lm_pd.get('quote_no', '')),
             'value': float(dd.get('value', 0) or 0),
             'status': str(dd.get('status', '')),
-            'won_time': str(dd.get('won_time', '') or ''),
             'org_name': str(dd.get('org_name', '')),
-            'org_id': str(dd.get('org_id', '')),
             'stage_id': str(dd.get('stage_id', '')),
             'label': str(dd.get('label', '')),
             'platform_company': str(dd.get('platform_company', '')),
             'deal_type': str(dd.get('deal_type', '')),
             'mfg_type': str(dd.get('mfg_type', '')),
             'industry': str(dd.get('industry', '')),
-            'quote_number': str(dd.get('quote_number', '') or ''),
-            'po_number': str(dd.get('po_number', '') or ''),
+            'pd_quote_number': str(dd.get('quote_number', '') or ''),
+            'pd_po_number': str(dd.get('po_number', '') or ''),
         })
 
     all_parts_data = []
