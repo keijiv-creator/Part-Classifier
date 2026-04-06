@@ -48,6 +48,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
+import * as XLSX from "xlsx";
 
 const API_BASE = "/api";
 
@@ -248,23 +249,33 @@ function SourceDataView({
   sheets,
   sheetNames,
   defaultSheet,
+  onExportExcel,
 }: {
   title: string;
   subtitle: string;
   sheets: Record<string, { headers: string[]; rows: any[] }>;
   sheetNames: string[];
   defaultSheet: string;
+  onExportExcel?: () => void;
 }) {
   const [activeSheet, setActiveSheet] = useState(defaultSheet);
   const totalRows = Object.values(sheets).reduce((sum, s) => sum + s.rows.length, 0);
 
   return (
     <div className="px-8 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#1B2A4A]">{title}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {subtitle} — {sheetNames.length} sheet{sheetNames.length !== 1 ? "s" : ""}, {formatNumber(totalRows)} total rows
-        </p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1B2A4A]">{title}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {subtitle} — {sheetNames.length} sheet{sheetNames.length !== 1 ? "s" : ""}, {formatNumber(totalRows)} total rows
+          </p>
+        </div>
+        {onExportExcel && (
+          <Button onClick={onExportExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+            <Download className="h-4 w-4" />
+            Export to Excel
+          </Button>
+        )}
       </div>
       <Tabs value={activeSheet} onValueChange={setActiveSheet}>
         <TabsList className="mb-4">
@@ -308,7 +319,7 @@ interface RunLogEntry {
   elapsedSeconds: number;
 }
 
-type NavPage = "process" | "dashboard" | "results" | "source_national" | "source_bookings" | "history" | "settings";
+type NavPage = "process" | "dashboard" | "results" | "source_bookings" | "history" | "settings";
 
 export default function Dashboard() {
   const [bookingsFile, setBookingsFile] = useState<File | null>(null);
@@ -441,7 +452,6 @@ export default function Dashboard() {
     { id: "dashboard" as NavPage, label: "Dashboard", icon: LayoutDashboard, disabled: !result },
     { id: "process" as NavPage, label: "Process Files", icon: FolderInput },
     { id: "results" as NavPage, label: "Results & Export", icon: FileOutput, disabled: !result },
-    { id: "source_national" as NavPage, label: "Python National", icon: FileSpreadsheet, disabled: !result },
     { id: "source_bookings" as NavPage, label: "Natman Bookings", icon: FileSpreadsheet, disabled: !result },
     { id: "history" as NavPage, label: "Run History", icon: Clock },
     { id: "settings" as NavPage, label: "Settings", icon: Settings },
@@ -1014,25 +1024,20 @@ export default function Dashboard() {
           </div>
         )}
 
-        {activePage === "source_national" && result && (() => {
-          const sheets = result.source_data.national_sheets;
-          const sheetNames = Object.keys(sheets);
-          const defaultSheet = sheetNames[0] || "";
-          return (
-            <SourceDataView
-              title="Python National"
-              subtitle="Output from the Python National package"
-              sheets={sheets}
-              sheetNames={sheetNames}
-              defaultSheet={defaultSheet}
-            />
-          );
-        })()}
-
         {activePage === "source_bookings" && result && (() => {
           const sheets = result.source_data.bookings_sheets;
           const sheetNames = Object.keys(sheets);
           const defaultSheet = sheetNames[0] || "";
+          const exportBookingsExcel = () => {
+            const wb = XLSX.utils.book_new();
+            for (const name of sheetNames) {
+              const sheet = sheets[name];
+              const wsData = [sheet.headers, ...sheet.rows.map((row: any) => sheet.headers.map((h: string) => row[h]))];
+              const ws = XLSX.utils.aoa_to_sheet(wsData);
+              XLSX.utils.book_append_sheet(wb, ws, name.substring(0, 31));
+            }
+            XLSX.writeFile(wb, "Natman_Bookings_Export.xlsx");
+          };
           return (
             <SourceDataView
               title="Natman Bookings"
@@ -1040,6 +1045,7 @@ export default function Dashboard() {
               sheets={sheets}
               sheetNames={sheetNames}
               defaultSheet={defaultSheet}
+              onExportExcel={exportBookingsExcel}
             />
           );
         })()}
