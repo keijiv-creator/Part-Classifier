@@ -96,6 +96,11 @@ interface AnalysisResult {
     repeat_deals: any[];
     pd_info: any[];
   };
+  source_data: {
+    national_headers: string[];
+    national_rows: any[];
+    landmark_rows: any[];
+  };
 }
 
 function formatCurrency(value: number): string {
@@ -236,7 +241,7 @@ function DataTable({
   );
 }
 
-type NavPage = "process" | "dashboard" | "results" | "settings";
+type NavPage = "process" | "dashboard" | "results" | "source_national" | "source_bookings" | "settings";
 
 export default function Dashboard() {
   const [bookingsFile, setBookingsFile] = useState<File | null>(null);
@@ -317,6 +322,8 @@ export default function Dashboard() {
     { id: "dashboard" as NavPage, label: "Dashboard", icon: LayoutDashboard, disabled: !result },
     { id: "process" as NavPage, label: "Process Files", icon: FolderInput },
     { id: "results" as NavPage, label: "Results & Export", icon: FileOutput, disabled: !result },
+    { id: "source_national" as NavPage, label: "Python National", icon: FileSpreadsheet, disabled: !result },
+    { id: "source_bookings" as NavPage, label: "Natman Bookings", icon: FileSpreadsheet, disabled: !result },
     { id: "settings" as NavPage, label: "Settings", icon: Settings },
   ];
 
@@ -885,6 +892,54 @@ export default function Dashboard() {
                 </Card>
               </TabsContent>
             </Tabs>
+          </div>
+        )}
+
+        {activePage === "source_national" && result && (
+          <div className="px-8 py-8">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-[#1B2A4A]">Python National — Raw Quote Data</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {formatNumber(result.source_data.national_rows.length)} rows from the uploaded National quote export
+              </p>
+            </div>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6">
+                <DataTable
+                  data={result.source_data.national_rows}
+                  columns={(result.source_data.national_headers || []).map((h) => ({
+                    key: h,
+                    label: h,
+                  }))}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {activePage === "source_bookings" && result && (
+          <div className="px-8 py-8">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-[#1B2A4A]">Natman Bookings — LANDMARK Data</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {formatNumber(result.source_data.landmark_rows.length)} rows from the uploaded Bookings LANDMARK sheet
+              </p>
+            </div>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6">
+                <DataTable
+                  data={result.source_data.landmark_rows}
+                  columns={
+                    result.source_data.landmark_rows.length > 0
+                      ? Object.keys(result.source_data.landmark_rows[0]).map((h) => ({
+                          key: h,
+                          label: h,
+                        }))
+                      : []
+                  }
+                />
+              </CardContent>
+            </Card>
           </div>
         )}
 

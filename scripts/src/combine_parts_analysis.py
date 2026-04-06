@@ -139,19 +139,28 @@ def load_landmark(bookings_file):
     if 'LANDMARK' not in wb.sheetnames:
         print("  ERROR: LANDMARK sheet not found in bookings file")
         wb.close()
-        return {}
+        return {}, []
     ws = wb['LANDMARK']
     rows = list(ws.iter_rows(values_only=True))
     wb.close()
 
     if not rows:
-        return {}
+        return {}, []
 
     headers = [str(h).strip().upper() if h else '' for h in rows[0]]
     hi = {h: i for i, h in enumerate(headers)}
 
     landmark = {}
+    raw_landmark_rows = []
     for row in rows[1:]:
+        row_dict = {}
+        for h, idx in hi.items():
+            val = row[idx] if idx < len(row) else None
+            if hasattr(val, 'strftime'):
+                val = val.strftime('%Y-%m-%d')
+            row_dict[h] = str(val) if val is not None else ''
+        raw_landmark_rows.append(row_dict)
+
         cust_part_raw = row[hi.get('CUST PART ID', 1)]
         cust_part = str(cust_part_raw).strip().upper() if cust_part_raw is not None else ''
         if cust_part and cust_part != 'NONE':
@@ -165,7 +174,27 @@ def load_landmark(bookings_file):
             }
 
     print(f"  Loaded {len(landmark)} LANDMARK entries")
-    return landmark
+    return landmark, raw_landmark_rows
+
+
+def load_raw_national(input_file):
+    src = openpyxl.load_workbook(input_file, data_only=True, read_only=True)
+    ws = src.active
+    headers = None
+    raw_rows = []
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            headers = [str(h).strip() if h else f'COL_{idx}' for idx, h in enumerate(row)]
+            continue
+        row_dict = {}
+        for idx, h in enumerate(headers):
+            val = row[idx] if idx < len(row) else None
+            if hasattr(val, 'strftime'):
+                val = val.strftime('%Y-%m-%d')
+            row_dict[h] = str(val) if val is not None else ''
+        raw_rows.append(row_dict)
+    src.close()
+    return raw_rows, headers
 
 
 def transform_raw_data(input_file, org_id_map):
@@ -638,7 +667,11 @@ def main(cli_args=None):
     org_id_map = load_org_ids(org_ids_file) if org_ids_file else {}
     print(f"  Loaded {len(org_id_map)} org ID mappings")
 
-    landmark = load_landmark(bookings_file)
+    landmark, raw_landmark_rows = load_landmark(bookings_file)
+
+    print("  Loading raw National quote data for source view...")
+    raw_national_rows, raw_national_headers = load_raw_national(input_file)
+    print(f"  Raw National data: {len(raw_national_rows):,} rows, {len(raw_national_headers)} columns")
 
     pd_cache = {}
     if pd_cache_file:
@@ -1019,6 +1052,11 @@ def main(cli_args=None):
             'new_deals': new_deals_data,
             'repeat_deals': repeat_deals_data,
             'pd_info': pd_info_data,
+        },
+        'source_data': {
+            'national_headers': raw_national_headers,
+            'national_rows': raw_national_rows,
+            'landmark_rows': raw_landmark_rows,
         }
     }
 
