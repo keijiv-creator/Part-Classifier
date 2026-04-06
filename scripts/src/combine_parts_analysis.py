@@ -624,7 +624,11 @@ def main(cli_args=None):
         print("  ERROR: Could not find National QuoteData input file")
         sys.exit(1)
 
-    org_ids_file = find_file(PYNAT_EXTRACT, 'org_ids.csv')
+    bundled_org_ids = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'org_ids.csv')
+    if os.path.exists(bundled_org_ids):
+        org_ids_file = bundled_org_ids
+    else:
+        org_ids_file = find_file(PYNAT_EXTRACT, 'org_ids.csv')
     pd_cache_file = find_file(PYNAT_EXTRACT, 'pd_cache.json')
 
     print(f"  Bookings: {os.path.basename(bookings_file)}")
