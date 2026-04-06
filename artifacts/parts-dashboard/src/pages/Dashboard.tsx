@@ -64,6 +64,7 @@ interface AnalysisResult {
   summary: {
     total_unique_parts: number;
     new_deals_count: number;
+    repeat_deals_count: number;
     pd_info_count: number;
     total_new_deals_revenue: number;
     total_pd_pipeline_value: number;
@@ -92,6 +93,7 @@ interface AnalysisResult {
   sheets: {
     all_unique_parts: any[];
     new_deals: any[];
+    repeat_deals: any[];
     pd_info: any[];
   };
 }
@@ -581,9 +583,10 @@ export default function Dashboard() {
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
               <KpiCard title="Unique Parts" value={formatNumber(result.summary.total_unique_parts)} icon={Package} />
               <KpiCard title="New Deals" value={formatNumber(result.summary.new_deals_count)} icon={Target} subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_new)}`} />
+              <KpiCard title="Repeat Deals" value={formatNumber(result.summary.repeat_deals_count)} icon={TrendingUp} />
               <KpiCard title="PD Deals" value={formatNumber(result.summary.pd_info_count)} icon={BarChart3} subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_pd)}`} />
               <KpiCard title="Pipeline Value" value={formatCurrency(result.summary.total_pd_pipeline_value)} icon={DollarSign} trend="up" />
               <KpiCard title="Won Deals" value={formatNumber(result.summary.won_deals_count)} icon={CheckCircle2} subtitle={formatCurrency(result.summary.won_deals_value)} trend="up" />
@@ -718,6 +721,7 @@ export default function Dashboard() {
                 <TabsTrigger value="summary">Charts</TabsTrigger>
                 <TabsTrigger value="all_parts">All Parts ({formatNumber(result.sheets.all_unique_parts.length)})</TabsTrigger>
                 <TabsTrigger value="new_deals">New Deals ({formatNumber(result.sheets.new_deals.length)})</TabsTrigger>
+                <TabsTrigger value="repeat_deals">Repeat Deals ({formatNumber(result.sheets.repeat_deals.length)})</TabsTrigger>
                 <TabsTrigger value="pd_info">PD Info ({formatNumber(result.sheets.pd_info.length)})</TabsTrigger>
               </TabsList>
 
@@ -828,6 +832,28 @@ export default function Dashboard() {
                         { key: "mapped_med_rev", label: "Revenue", format: (v) => formatCurrency(v || 0) },
                         { key: "mapped_pd_p2_time", label: "P2 Time" },
                         { key: "first_order_date", label: "First Order" },
+                        { key: "calc_label", label: "Label" },
+                      ]}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="repeat_deals">
+                <Card className="border-0 shadow-sm">
+                  <CardContent className="pt-6">
+                    <DataTable
+                      data={result.sheets.repeat_deals}
+                      columns={[
+                        { key: "name", label: "Customer" },
+                        { key: "customer_part_id", label: "Part ID" },
+                        { key: "mapped_status", label: "Status" },
+                        { key: "mapped_probability", label: "Probability" },
+                        { key: "mapped_med_rev", label: "Revenue", format: (v) => formatCurrency(v || 0) },
+                        { key: "mapped_pd_p2_time", label: "P2 Time" },
+                        { key: "first_order_date", label: "First Order Date" },
+                        { key: "first_order_no", label: "First Order No" },
+                        { key: "landmark_quote_no", label: "Quote No" },
                         { key: "calc_label", label: "Label" },
                       ]}
                     />
