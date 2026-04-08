@@ -162,6 +162,11 @@ function dictToChartData(dict: Record<string, number>, nameKey = "name", valKey 
     .sort((a, b) => (b[valKey] as number) - (a[valKey] as number));
 }
 
+function truncateLabel(label: string, max = 18): string {
+  if (!label) return "";
+  return label.length > max ? label.slice(0, max - 1) + "\u2026" : label;
+}
+
 function DeltaBadge({ value, isCurrency = false }: { value: number; isCurrency?: boolean }) {
   if (value === 0) return null;
   const isPositive = value > 0;
@@ -1202,12 +1207,12 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <Card className="border-0 shadow-sm">
+              <Card className="border-0 shadow-sm overflow-hidden">
                 <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Deal Classification (New Deals)</CardTitle></CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={280}>
                     <PieChart>
-                      <Pie data={dictToChartData(result.analytics.calc_label_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                      <Pie data={dictToChartData(result.analytics.calc_label_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${truncateLabel(name, 14)} (${(percent * 100).toFixed(0)}%)`}>
                         {dictToChartData(result.analytics.calc_label_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
                       </Pie>
                       <Tooltip formatter={(v: number) => formatNumber(v)} />
@@ -1216,12 +1221,12 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              <Card className="border-0 shadow-sm">
+              <Card className="border-0 shadow-sm overflow-hidden">
                 <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Pipeline Status (PD Deals)</CardTitle></CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={280}>
                     <PieChart>
-                      <Pie data={dictToChartData(result.analytics.pd_status_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                      <Pie data={dictToChartData(result.analytics.pd_status_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${truncateLabel(name, 14)} (${(percent * 100).toFixed(0)}%)`}>
                         {dictToChartData(result.analytics.pd_status_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
                       </Pie>
                       <Tooltip formatter={(v: number) => formatNumber(v)} />
@@ -1230,14 +1235,14 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              <Card className="border-0 shadow-sm">
+              <Card className="border-0 shadow-sm overflow-hidden">
                 <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Revenue by Platform</CardTitle></CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={dictToChartData(result.analytics.platform_revenue, "name", "value")} layout="vertical">
+                    <BarChart data={dictToChartData(result.analytics.platform_revenue, "name", "value")} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                       <XAxis type="number" tickFormatter={(v) => formatCurrency(v)} />
-                      <YAxis type="category" dataKey="name" width={80} />
+                      <YAxis type="category" dataKey="name" width={80} tickFormatter={(v) => truncateLabel(v, 12)} />
                       <Tooltip formatter={(v: number) => formatCurrency(v)} />
                       <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
                     </BarChart>
@@ -1245,14 +1250,14 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              <Card className="border-0 shadow-sm">
+              <Card className="border-0 shadow-sm overflow-hidden">
                 <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Deals by Platform</CardTitle></CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={dictToChartData(result.analytics.platform_distribution, "name", "value")} layout="vertical">
+                    <BarChart data={dictToChartData(result.analytics.platform_distribution, "name", "value")} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                       <XAxis type="number" />
-                      <YAxis type="category" dataKey="name" width={80} />
+                      <YAxis type="category" dataKey="name" width={80} tickFormatter={(v) => truncateLabel(v, 12)} />
                       <Tooltip />
                       <Bar dataKey="value" fill={CHART_COLORS[1]} radius={[0, 4, 4, 0]} />
                     </BarChart>
@@ -1260,13 +1265,13 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              <Card className="border-0 shadow-sm md:col-span-2">
+              <Card className="border-0 shadow-sm overflow-hidden md:col-span-2">
                 <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Top 15 Customers by Pipeline Value</CardTitle></CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={350}>
-                    <BarChart data={result.analytics.top_customers_pd}>
+                    <BarChart data={result.analytics.top_customers_pd} margin={{ top: 5, right: 20, bottom: 60, left: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={120} interval={0} tick={{ fontSize: 11 }} />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={120} interval={0} tick={{ fontSize: 11 }} tickFormatter={(v) => truncateLabel(v)} />
                       <YAxis tickFormatter={(v) => formatCurrency(v)} />
                       <Tooltip formatter={(v: number) => formatCurrency(v)} />
                       <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
@@ -1364,12 +1369,12 @@ export default function Dashboard() {
 
               <TabsContent value="summary" className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Card className="border-0 shadow-sm">
+                  <Card className="border-0 shadow-sm overflow-hidden">
                     <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Pipeline Status</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={280}>
                         <PieChart>
-                          <Pie data={dictToChartData(result.analytics.pd_status_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                          <Pie data={dictToChartData(result.analytics.pd_status_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${truncateLabel(name, 14)} (${(percent * 100).toFixed(0)}%)`}>
                             {dictToChartData(result.analytics.pd_status_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
                           </Pie>
                           <Tooltip formatter={(v: number) => formatNumber(v)} />
@@ -1378,14 +1383,14 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-0 shadow-sm">
+                  <Card className="border-0 shadow-sm overflow-hidden">
                     <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Deal Labels</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={280}>
-                        <BarChart data={dictToChartData(result.analytics.label_distribution, "name", "value")} layout="vertical">
+                        <BarChart data={dictToChartData(result.analytics.label_distribution, "name", "value")} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                           <XAxis type="number" />
-                          <YAxis type="category" dataKey="name" width={120} />
+                          <YAxis type="category" dataKey="name" width={120} tickFormatter={(v) => truncateLabel(v, 16)} />
                           <Tooltip />
                           <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
                         </BarChart>
@@ -1393,13 +1398,13 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-0 shadow-sm md:col-span-2">
+                  <Card className="border-0 shadow-sm overflow-hidden md:col-span-2">
                     <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Top 15 New Deals by Revenue</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={350}>
-                        <BarChart data={result.analytics.top_customers_new}>
+                        <BarChart data={result.analytics.top_customers_new} margin={{ top: 5, right: 20, bottom: 60, left: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis dataKey="name" angle={-45} textAnchor="end" height={120} interval={0} tick={{ fontSize: 11 }} />
+                          <XAxis dataKey="name" angle={-45} textAnchor="end" height={120} interval={0} tick={{ fontSize: 11 }} tickFormatter={(v) => truncateLabel(v)} />
                           <YAxis tickFormatter={(v) => formatCurrency(v)} />
                           <Tooltip formatter={(v: number) => formatCurrency(v)} />
                           <Bar dataKey="revenue" fill={CHART_COLORS[1]} radius={[4, 4, 0, 0]} />
