@@ -124,6 +124,8 @@ router.post(
 
     const cutoffYear = req.body?.cutoff_year;
     const faiThreshold = req.body?.fai_threshold;
+    const reportDate = req.body?.report_date || new Date().toISOString().slice(0, 10);
+    const pipedriveApiKey = req.body?.pipedrive_api_key;
     if (cutoffYear) args.push("--cutoff-year", String(cutoffYear));
     if (faiThreshold) args.push("--fai-threshold", String(faiThreshold));
 
@@ -148,8 +150,12 @@ router.post(
 
     try {
       const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+        const spawnEnv = { ...process.env };
+        if (pipedriveApiKey) {
+          spawnEnv.PIPEDRIVE_API_KEY = pipedriveApiKey;
+        }
         const proc = spawn("python3", args, {
-          env: { ...process.env },
+          env: spawnEnv,
           cwd: "/home/runner/workspace",
         });
 
@@ -179,6 +185,7 @@ router.post(
       let runId: number | null = null;
       try {
         const [run] = await db.insert(runsTable).values({
+          reportDate: reportDate,
           cutoffYear: cutoffYear ? parseInt(cutoffYear) : null,
           faiThreshold: faiThreshold ? parseFloat(faiThreshold) : null,
           summaryJson: jsonData.summary,
@@ -308,6 +315,7 @@ router.get("/analysis/runs", async (req: Request, res: Response) => {
       db.select({
         id: runsTable.id,
         createdAt: runsTable.createdAt,
+        reportDate: runsTable.reportDate,
         cutoffYear: runsTable.cutoffYear,
         faiThreshold: runsTable.faiThreshold,
         totalUniqueParts: runsTable.totalUniqueParts,
@@ -317,7 +325,7 @@ router.get("/analysis/runs", async (req: Request, res: Response) => {
         totalPdPipelineValue: runsTable.totalPdPipelineValue,
         wonDealsCount: runsTable.wonDealsCount,
         openDealsCount: runsTable.openDealsCount,
-      }).from(runsTable).orderBy(desc(runsTable.createdAt)).limit(limit).offset(offset),
+      }).from(runsTable).orderBy(desc(runsTable.reportDate), desc(runsTable.createdAt)).limit(limit).offset(offset),
       db.select({ count: sql<number>`count(*)` }).from(runsTable),
     ]);
 

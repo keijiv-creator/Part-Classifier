@@ -37,6 +37,9 @@ import {
   Plus,
   Minus,
   ArrowRight,
+  Calendar,
+  Key,
+  AlertTriangle,
 } from "lucide-react";
 import {
   BarChart,
@@ -127,6 +130,7 @@ interface AnalysisResult {
 interface RunSummary {
   id: number;
   createdAt: string;
+  reportDate: string | null;
   cutoffYear: number | null;
   faiThreshold: number | null;
   totalUniqueParts: number;
@@ -525,8 +529,9 @@ export default function Dashboard() {
   const [bookingsFile, setBookingsFile] = useState<File | null>(null);
   const [nationalFile, setNationalFile] = useState<File | null>(null);
   const [cutoffYear, setCutoffYear] = useState("2021");
-  const [faiThreshold, setFaiThreshold] = useState("0.50");
   const [syncPipedrive, setSyncPipedrive] = useState(true);
+  const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
+  const [reportDateWarning, setReportDateWarning] = useState("");
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
@@ -535,6 +540,8 @@ export default function Dashboard() {
   const [dragOver1, setDragOver1] = useState(false);
   const [dragOver2, setDragOver2] = useState(false);
   const [activePage, setActivePage] = useState<NavPage>(result ? "dashboard" : "process");
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+  const [apiKey, setApiKey] = useState("");
 
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [compareRunA, setCompareRunA] = useState<number | null>(null);
@@ -555,6 +562,13 @@ export default function Dashboard() {
   useEffect(() => {
     fetchRuns();
   }, []);
+
+  useEffect(() => {
+    if (runs.length > 0) {
+      const dup = runs.some((r) => r.reportDate === reportDate);
+      setReportDateWarning(dup ? "A run with this report date already exists. Running again will create a duplicate." : "");
+    }
+  }, [runs, reportDate]);
 
   const runComparison = async () => {
     if (!compareRunA || !compareRunB) return;
@@ -583,11 +597,21 @@ export default function Dashboard() {
     []
   );
 
-  const runAnalysis = async () => {
+  const handleRunPipelineClick = () => {
     if (!bookingsFile || !nationalFile) {
       setError("Please upload both files before running.");
       return;
     }
+    setApiKey("");
+    setShowApiKeyDialog(true);
+  };
+
+  const runAnalysis = async (key: string) => {
+    if (!bookingsFile || !nationalFile) {
+      setError("Please upload both files before running.");
+      return;
+    }
+    setShowApiKeyDialog(false);
     setLoading(true);
     setError("");
     setProgress(10);
@@ -596,7 +620,10 @@ export default function Dashboard() {
     formData.append("booking_file", bookingsFile);
     formData.append("national_file", nationalFile);
     formData.append("cutoff_year", cutoffYear);
-    formData.append("fai_threshold", faiThreshold);
+    formData.append("report_date", reportDate);
+    if (key) {
+      formData.append("pipedrive_api_key", key);
+    }
 
     const progressTimer = setInterval(() => {
       setProgress((p) => Math.min(p + 2, 90));
@@ -1037,18 +1064,28 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center gap-4">
                   <div>
-                    <p className="text-sm font-medium text-[#1B2A4A] mb-1.5">FAI Threshold</p>
+                    <p className="text-sm font-medium text-[#1B2A4A] mb-1.5">Report Date</p>
                     <Input
-                      type="number"
-                      value={faiThreshold}
-                      onChange={(e) => setFaiThreshold(e.target.value)}
-                      step="0.05"
-                      min="0"
-                      max="1"
-                      className="w-28"
+                      type="date"
+                      value={reportDate}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setReportDate(val);
+                        const dup = runs.some((r) => r.reportDate === val);
+                        setReportDateWarning(dup ? "A run with this report date already exists. Running again will create a duplicate." : "");
+                      }}
+                      className="w-44"
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-5">First Article Inspection revenue threshold (0-1).</p>
+                  <div className="mt-5">
+                    <p className="text-xs text-muted-foreground">Date this data represents (defaults to today). Used for labeling and ordering runs.</p>
+                    {reportDateWarning && (
+                      <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {reportDateWarning}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1070,7 +1107,7 @@ export default function Dashboard() {
             )}
 
             <Button
-              onClick={runAnalysis}
+              onClick={handleRunPipelineClick}
               disabled={loading || !bookingsFile || !nationalFile}
               className="w-full h-12 text-base font-semibold bg-[#1B2A4A] hover:bg-[#243659] text-white rounded-lg gap-2"
               size="lg"
@@ -1087,6 +1124,47 @@ export default function Dashboard() {
                 </>
               )}
             </Button>
+
+            {showApiKeyDialog && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <Card className="w-full max-w-md shadow-xl border-0">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg font-semibold text-[#1B2A4A] flex items-center gap-2">
+                      <Key className="h-5 w-5" />
+                      Pipedrive API Key
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      Enter your Pipedrive API key to fetch live deal data. Leave blank to use cached data only.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Input
+                      type="password"
+                      placeholder="Enter API key..."
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && runAnalysis(apiKey)}
+                      autoFocus
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowApiKeyDialog(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => runAnalysis(apiKey)}
+                        className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]"
+                      >
+                        <Play className="h-4 w-4" />
+                        Run
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
         )}
 
@@ -1422,7 +1500,7 @@ export default function Dashboard() {
                       <option value="">Select run...</option>
                       {runs.map((r) => (
                         <option key={r.id} value={r.id}>
-                          Run #{r.id} — {new Date(r.createdAt).toLocaleDateString()} {new Date(r.createdAt).toLocaleTimeString()} ({r.newDealsCount} new, {r.pdInfoCount} PD)
+                          Run #{r.id} — {r.reportDate || new Date(r.createdAt).toLocaleDateString()} ({r.newDealsCount} new, {r.pdInfoCount} PD)
                         </option>
                       ))}
                     </select>
@@ -1437,7 +1515,7 @@ export default function Dashboard() {
                       <option value="">Select run...</option>
                       {runs.map((r) => (
                         <option key={r.id} value={r.id}>
-                          Run #{r.id} — {new Date(r.createdAt).toLocaleDateString()} {new Date(r.createdAt).toLocaleTimeString()} ({r.newDealsCount} new, {r.pdInfoCount} PD)
+                          Run #{r.id} — {r.reportDate || new Date(r.createdAt).toLocaleDateString()} ({r.newDealsCount} new, {r.pdInfoCount} PD)
                         </option>
                       ))}
                     </select>
@@ -1555,11 +1633,12 @@ export default function Dashboard() {
                             #{run.id}
                           </div>
                           <div>
-                            <p className="text-sm font-medium">
-                              {new Date(run.createdAt).toLocaleDateString()} {new Date(run.createdAt).toLocaleTimeString()}
+                            <p className="text-sm font-medium flex items-center gap-1.5">
+                              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                              {run.reportDate || new Date(run.createdAt).toLocaleDateString()}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              Cutoff: {run.cutoffYear || "—"} · FAI: {run.faiThreshold || "—"}
+                              Cutoff: {run.cutoffYear || "—"}
                             </p>
                           </div>
                         </div>
@@ -1650,19 +1729,6 @@ export default function Dashboard() {
                     className="w-32"
                   />
                   <p className="text-xs text-muted-foreground mt-1.5">Quotes before this year will be excluded</p>
-                </div>
-                <div className="border-t pt-5">
-                  <p className="text-sm font-medium text-[#1B2A4A] mb-1.5">Default FAI Threshold</p>
-                  <Input
-                    type="number"
-                    value={faiThreshold}
-                    onChange={(e) => setFaiThreshold(e.target.value)}
-                    step="0.05"
-                    min="0"
-                    max="1"
-                    className="w-32"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1.5">Revenue threshold for First Article Inspection split (0-1)</p>
                 </div>
               </CardContent>
             </Card>
