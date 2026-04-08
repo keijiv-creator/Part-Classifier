@@ -27,16 +27,28 @@ pnpm workspace monorepo using TypeScript. Contains a Parts Analysis Dashboard th
 - Configurable parameters: Quote Cutoff Year, FAI Threshold, Pipedrive Sync toggle
 - Tabbed results: Sales Analytics, Charts, All Parts, New Deals, PD Info
 - Sidebar tabs for generated outputs: National PDSync, Natman Bookings
+- Run History tab: view past runs, compare any two uploads with line-by-line diff
+- Incremental diff: NEW/CHANGED/REMOVED badges on rows, expandable change details, KPI delta indicators
+- Comparison picker: select any two runs and see full diff with filter buttons (ALL/NEW/CHANGED/REMOVED/UNCHANGED)
 - Download buttons for all generated files (PDSync, Natman Bookings, Dashboard PDF)
-- "Download All (Zip)" button bundles Parts_Analysis + National_PDSync + Natman_Bookings + Dashboard PDF into a single zip
-- KPI cards, pie charts, bar charts for sales analytics
+- "Download All (Zip)" button bundles Parts_Analysis + National_PDSync + Natman_Bookings + Dashboard image into a single zip
+- KPI cards with delta indicators showing changes from previous run
+- Pie charts, bar charts for sales analytics
 
 ### API Server (`artifacts/api-server`)
 - Express 5 backend
-- `POST /api/analysis/run` — accepts xlsx file uploads (multipart: `national_file`, `booking_file`), runs Python analysis, returns JSON
+- `POST /api/analysis/run` — accepts xlsx file uploads (multipart: `national_file`, `booking_file`), runs Python analysis, persists run to DB, returns JSON with diff
+- `GET /api/analysis/runs` — returns last 50 runs with summary KPIs
+- `POST /api/analysis/compare` — accepts `{runIdA, runIdB}`, returns line-by-line diff of New_Deals and PD_Info parts
 - `GET /api/analysis/download?path=...` — serves generated Excel files for download
-- `POST /api/analysis/download-zip` — bundles multiple output files + dashboard PDF into a zip (multipart: file paths + optional `dashboard_pdf` blob)
+- `POST /api/analysis/download-zip` — bundles multiple output files + dashboard image into a zip
 - `GET /api/healthz` — health check
+
+### Database (`lib/db`)
+- PostgreSQL with Drizzle ORM
+- `runs` table — stores run metadata (timestamp, cutoff_year, fai_threshold, summary KPIs)
+- `run_parts` table — stores all parts per run (sheet_type: new_deals/pd_info, all key fields for diff comparison)
+- Schema push: `pnpm --filter @workspace/db run push`
 
 ## Python Analysis Script
 
@@ -59,6 +71,7 @@ Located at `scripts/src/combine_parts_analysis.py`. Accepts two raw xlsx files d
 - `--fai-threshold`: FAI threshold 0-1 (default: 0.50)
 - `--json-output`: Path to write JSON summary for dashboard consumption
 - `--pd-cache-file`: Optional path to pd_cache.json (skips Pipedrive search)
+- `--previous-run-json`: Path to JSON with previous run parts for diff (adds Change column to Excel)
 
 ### Output Files
 - `Natman_Bookings_YYYYMMDD.xlsx` — Processed bookings (MAIN/UNIQUE/TOTALS/LANDMARK)

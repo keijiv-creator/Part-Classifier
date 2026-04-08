@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,11 @@ import {
   X,
   FileText,
   Archive,
+  History,
+  GitCompare,
+  Plus,
+  Minus,
+  ArrowRight,
 } from "lucide-react";
 import {
   BarChart,
@@ -60,11 +65,26 @@ const CHART_COLORS = [
   "hsl(0, 65%, 50%)",
 ];
 
+interface DiffData {
+  previousRunId: number;
+  currentRunId: number;
+  newDeals: {
+    rows: any[];
+    summary: { added: number; removed: number; changed: number; unchanged: number; revenueChange: number };
+  };
+  pdInfo: {
+    rows: any[];
+    summary: { added: number; removed: number; changed: number; unchanged: number; revenueChange: number };
+  };
+}
+
 interface AnalysisResult {
   output_file: string;
   natman_bookings_file?: string;
   pdsync_file?: string;
   elapsed_seconds: number;
+  run_id?: number;
+  diff?: DiffData | null;
   summary: {
     total_unique_parts: number;
     new_deals_count: number;
@@ -104,6 +124,20 @@ interface AnalysisResult {
   };
 }
 
+interface RunSummary {
+  id: number;
+  createdAt: string;
+  cutoffYear: number | null;
+  faiThreshold: number | null;
+  totalUniqueParts: number;
+  newDealsCount: number;
+  pdInfoCount: number;
+  totalNewDealsRevenue: number;
+  totalPdPipelineValue: number;
+  wonDealsCount: number;
+  openDealsCount: number;
+}
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -124,18 +158,86 @@ function dictToChartData(dict: Record<string, number>, nameKey = "name", valKey 
     .sort((a, b) => (b[valKey] as number) - (a[valKey] as number));
 }
 
+function DeltaBadge({ value, isCurrency = false }: { value: number; isCurrency?: boolean }) {
+  if (value === 0) return null;
+  const isPositive = value > 0;
+  const display = isCurrency ? formatCurrency(Math.abs(value)) : formatNumber(Math.abs(value));
+  return (
+    <span className={`text-xs font-medium ${isPositive ? "text-emerald-600" : "text-red-500"}`}>
+      {isPositive ? "+" : "-"}{display}
+    </span>
+  );
+}
+
+function ChangeBadge({ type }: { type: string }) {
+  const styles: Record<string, string> = {
+    NEW: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    REMOVED: "bg-red-100 text-red-700 border-red-200",
+    CHANGED: "bg-amber-100 text-amber-700 border-amber-200",
+    UNCHANGED: "bg-gray-100 text-gray-500 border-gray-200",
+  };
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${styles[type] || styles.UNCHANGED}`}>
+      {type}
+    </span>
+  );
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  mappedStatus: "Status",
+  mappedProbability: "Probability",
+  mappedMedRev: "Revenue",
+  mappedPdP1Time: "P1 Time",
+  mappedPdP2Time: "P2 Time",
+  mappedPdP4Time: "P4 Time",
+  mappedPdP5Time: "P5 Time",
+  quoteNumber: "Quote #",
+  calcLabel: "Label",
+  pdId: "PD ID",
+  pdValue: "PD Value",
+  pdStatus: "PD Status",
+  pdStage: "PD Stage",
+};
+
+function ChangeDetails({ changes }: { changes?: Record<string, { old: any; new: any }> }) {
+  if (!changes || Object.keys(changes).length === 0) return null;
+  return (
+    <div className="mt-1 space-y-0.5">
+      {Object.entries(changes).map(([field, { old: oldVal, new: newVal }]) => {
+        const label = FIELD_LABELS[field] || field;
+        const formatVal = (v: any) => {
+          if (field === "mappedMedRev" || field === "pdValue") return formatCurrency(Number(v) || 0);
+          return String(v || "(empty)");
+        };
+        return (
+          <div key={field} className="flex items-center gap-1 text-[10px]">
+            <span className="text-muted-foreground font-medium">{label}:</span>
+            <span className="text-red-500 line-through">{formatVal(oldVal)}</span>
+            <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
+            <span className="text-emerald-600 font-medium">{formatVal(newVal)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function KpiCard({
   title,
   value,
   icon: Icon,
   subtitle,
   trend,
+  delta,
+  deltaCurrency,
 }: {
   title: string;
   value: string;
   icon: any;
   subtitle?: string;
   trend?: "up" | "down" | "neutral";
+  delta?: number;
+  deltaCurrency?: boolean;
 }) {
   return (
     <Card className="border-0 shadow-sm">
@@ -143,7 +245,10 @@ function KpiCard({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
-            <p className="text-2xl font-bold mt-1">{value}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-2xl font-bold">{value}</p>
+              {delta !== undefined && delta !== 0 && <DeltaBadge value={delta} isCurrency={deltaCurrency} />}
+            </div>
             {subtitle && (
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                 {trend === "up" && <ArrowUpRight className="h-3 w-3 text-emerald-500" />}
@@ -161,33 +266,55 @@ function KpiCard({
   );
 }
 
-function DataTable({
+function DiffDataTable({
   data,
   columns,
   maxRows = 100,
+  showDiff = false,
 }: {
   data: any[];
   columns: { key: string; label: string; format?: (v: any) => string }[];
   maxRows?: number;
+  showDiff?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [changeFilter, setChangeFilter] = useState<string>("ALL");
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const pageSize = maxRows;
 
   const filtered = useMemo(() => {
-    if (!search) return data;
+    let d = data;
+    if (showDiff && changeFilter !== "ALL") {
+      d = d.filter((row) => row.changeType === changeFilter);
+    }
+    if (!search) return d;
     const lower = search.toLowerCase();
-    return data.filter((row) =>
+    return d.filter((row) =>
       columns.some((col) => String(row[col.key] ?? "").toLowerCase().includes(lower))
     );
-  }, [data, search, columns]);
+  }, [data, search, columns, changeFilter, showDiff]);
 
   const paged = filtered.slice(page * pageSize, (page + 1) * pageSize);
   const totalPages = Math.ceil(filtered.length / pageSize);
 
+  const changeCounts = useMemo(() => {
+    if (!showDiff) return null;
+    const counts: Record<string, number> = { ALL: data.length, NEW: 0, REMOVED: 0, CHANGED: 0, UNCHANGED: 0 };
+    for (const row of data) {
+      if (row.changeType) counts[row.changeType] = (counts[row.changeType] || 0) + 1;
+    }
+    return counts;
+  }, [data, showDiff]);
+
+  const allColumns = useMemo(() => {
+    if (!showDiff) return columns;
+    return [{ key: "_change", label: "Change" }, ...columns];
+  }, [columns, showDiff]);
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -197,6 +324,21 @@ function DataTable({
             className="pl-9"
           />
         </div>
+        {showDiff && changeCounts && (
+          <div className="flex gap-1">
+            {(["ALL", "NEW", "CHANGED", "REMOVED", "UNCHANGED"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => { setChangeFilter(t); setPage(0); }}
+                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  changeFilter === t ? "bg-[#1B2A4A] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {t} ({changeCounts[t] || 0})
+              </button>
+            ))}
+          </div>
+        )}
         <span className="text-sm text-muted-foreground">
           {formatNumber(filtered.length)} rows
         </span>
@@ -205,7 +347,7 @@ function DataTable({
         <table className="w-full text-sm">
           <thead className="bg-muted/50 sticky top-0">
             <tr>
-              {columns.map((col) => (
+              {allColumns.map((col) => (
                 <th key={col.key} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap text-xs uppercase tracking-wide">
                   {col.label}
                 </th>
@@ -213,15 +355,35 @@ function DataTable({
             </tr>
           </thead>
           <tbody>
-            {paged.map((row, i) => (
-              <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
-                {columns.map((col) => (
-                  <td key={col.key} className="px-3 py-1.5 whitespace-nowrap">
-                    {col.format ? col.format(row[col.key]) : String(row[col.key] ?? "")}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {paged.map((row, i) => {
+              const ct = row.changeType;
+              const rowBg = showDiff && ct === "NEW" ? "bg-emerald-50/50"
+                : showDiff && ct === "REMOVED" ? "bg-red-50/50"
+                : showDiff && ct === "CHANGED" ? "bg-amber-50/30"
+                : "";
+              const globalIdx = page * pageSize + i;
+              const isExpanded = expandedRow === globalIdx;
+              return (
+                <tr
+                  key={i}
+                  className={`border-t hover:bg-muted/30 transition-colors cursor-pointer ${rowBg}`}
+                  onClick={() => showDiff && ct === "CHANGED" && setExpandedRow(isExpanded ? null : globalIdx)}
+                >
+                  {allColumns.map((col) => (
+                    <td key={col.key} className="px-3 py-1.5 whitespace-nowrap">
+                      {col.key === "_change" ? (
+                        <div>
+                          <ChangeBadge type={ct || "UNCHANGED"} />
+                          {isExpanded && ct === "CHANGED" && <ChangeDetails changes={row.changes} />}
+                        </div>
+                      ) : (
+                        col.format ? col.format(row[col.key]) : String(row[col.key] ?? "")
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -240,6 +402,18 @@ function DataTable({
       )}
     </div>
   );
+}
+
+function DataTable({
+  data,
+  columns,
+  maxRows = 100,
+}: {
+  data: any[];
+  columns: { key: string; label: string; format?: (v: any) => string }[];
+  maxRows?: number;
+}) {
+  return <DiffDataTable data={data} columns={columns} maxRows={maxRows} showDiff={false} />;
 }
 
 function SourceDataView({
@@ -303,7 +477,49 @@ function SourceDataView({
   );
 }
 
-type NavPage = "process" | "dashboard" | "results" | "source_national" | "source_bookings" | "settings";
+function DiffSummaryCard({ diff }: { diff: DiffData }) {
+  const nd = diff.newDeals.summary;
+  const pi = diff.pdInfo.summary;
+  const totalAdded = nd.added + pi.added;
+  const totalRemoved = nd.removed + pi.removed;
+  const totalChanged = nd.changed + pi.changed;
+  const netRevenue = nd.revenueChange + pi.revenueChange;
+
+  return (
+    <Card className="border-0 shadow-sm border-l-4 border-l-[#1B2A4A] mb-6">
+      <CardContent className="py-4">
+        <div className="flex items-center gap-2 mb-3">
+          <GitCompare className="h-4 w-4 text-[#1B2A4A]" />
+          <p className="text-sm font-semibold text-[#1B2A4A]">Changes vs. Previous Run (#{diff.previousRunId})</p>
+        </div>
+        <div className="flex gap-6 text-sm">
+          <div className="flex items-center gap-1.5">
+            <Plus className="h-3.5 w-3.5 text-emerald-600" />
+            <span className="font-semibold text-emerald-600">{totalAdded}</span>
+            <span className="text-muted-foreground">added</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Minus className="h-3.5 w-3.5 text-red-500" />
+            <span className="font-semibold text-red-500">{totalRemoved}</span>
+            <span className="text-muted-foreground">removed</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <ArrowRight className="h-3.5 w-3.5 text-amber-600" />
+            <span className="font-semibold text-amber-600">{totalChanged}</span>
+            <span className="text-muted-foreground">changed</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <DollarSign className="h-3.5 w-3.5 text-[#1B2A4A]" />
+            <span className="text-muted-foreground">Net revenue:</span>
+            <DeltaBadge value={netRevenue} isCurrency />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+type NavPage = "process" | "dashboard" | "results" | "source_national" | "source_bookings" | "history" | "settings";
 
 export default function Dashboard() {
   const [bookingsFile, setBookingsFile] = useState<File | null>(null);
@@ -319,6 +535,44 @@ export default function Dashboard() {
   const [dragOver1, setDragOver1] = useState(false);
   const [dragOver2, setDragOver2] = useState(false);
   const [activePage, setActivePage] = useState<NavPage>(result ? "dashboard" : "process");
+
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [compareRunA, setCompareRunA] = useState<number | null>(null);
+  const [compareRunB, setCompareRunB] = useState<number | null>(null);
+  const [comparisonDiff, setComparisonDiff] = useState<DiffData | null>(null);
+  const [comparing, setComparing] = useState(false);
+
+  const fetchRuns = async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/analysis/runs`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setRuns(data);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchRuns();
+  }, []);
+
+  const runComparison = async () => {
+    if (!compareRunA || !compareRunB) return;
+    setComparing(true);
+    setComparisonDiff(null);
+    try {
+      const resp = await fetch(`${API_BASE}/analysis/compare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runIdA: compareRunA, runIdB: compareRunB }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setComparisonDiff(data);
+      }
+    } catch {}
+    setComparing(false);
+  };
 
   const handleDrop = useCallback(
     (setter: (f: File) => void, e: React.DragEvent) => {
@@ -367,6 +621,7 @@ export default function Dashboard() {
       setProgress(100);
       setActiveTab("summary");
       setActivePage("dashboard");
+      fetchRuns();
     } catch (err: any) {
       setError(err.message || "An error occurred");
     } finally {
@@ -499,12 +754,91 @@ export default function Dashboard() {
     }
   };
 
+  const diff = result?.diff || null;
+  const prevSummary = useMemo(() => {
+    if (!diff || !diff.previousRunId) return null;
+    return runs.find(r => r.id === diff.previousRunId) || null;
+  }, [diff, runs]);
+
+  const kpiDeltas = useMemo(() => {
+    if (!result || !prevSummary) return null;
+    return {
+      uniqueParts: result.summary.total_unique_parts - prevSummary.totalUniqueParts,
+      newDeals: result.summary.new_deals_count - prevSummary.newDealsCount,
+      pdInfo: result.summary.pd_info_count - prevSummary.pdInfoCount,
+      pipelineValue: result.summary.total_pd_pipeline_value - prevSummary.totalPdPipelineValue,
+      wonDeals: result.summary.won_deals_count - prevSummary.wonDealsCount,
+      openDeals: result.summary.open_deals_count - prevSummary.openDealsCount,
+    };
+  }, [result, prevSummary]);
+
+  const newDealsWithDiff = useMemo(() => {
+    if (!diff) return result?.sheets.new_deals || [];
+    const diffMap = new Map<string, any>();
+    for (const row of diff.newDeals.rows) {
+      diffMap.set(row.customerPartId, row);
+    }
+    const merged = (result?.sheets.new_deals || []).map((row) => {
+      const d = diffMap.get(row.customer_part_id);
+      return d ? { ...row, changeType: d.changeType, changes: d.changes } : { ...row, changeType: "UNCHANGED" };
+    });
+    for (const row of diff.newDeals.rows) {
+      if (row.changeType === "REMOVED") {
+        merged.push({
+          customer_part_id: row.customerPartId,
+          name: row.name || "",
+          mapped_status: row.mappedStatus || "",
+          mapped_probability: row.mappedProbability || "",
+          mapped_med_rev: row.mappedMedRev || 0,
+          mapped_pd_p2_time: row.mappedPdP2Time || "",
+          first_order_date: row.firstOrderDate || "",
+          calc_label: row.calcLabel || "",
+          changeType: "REMOVED",
+        });
+      }
+    }
+    return merged;
+  }, [result, diff]);
+
+  const pdInfoWithDiff = useMemo(() => {
+    if (!diff) return result?.sheets.pd_info || [];
+    const diffMap = new Map<string, any>();
+    for (const row of diff.pdInfo.rows) {
+      diffMap.set(row.customerPartId, row);
+    }
+    const merged = (result?.sheets.pd_info || []).map((row) => {
+      const d = diffMap.get(row.customer_part_id);
+      return d ? { ...row, changeType: d.changeType, changes: d.changes } : { ...row, changeType: "UNCHANGED" };
+    });
+    for (const row of diff.pdInfo.rows) {
+      if (row.changeType === "REMOVED") {
+        merged.push({
+          customer_part_id: row.customerPartId,
+          pd_id: row.pdId || "",
+          title: row.pdTitle || "",
+          value: row.pdValue || 0,
+          status: row.pdStatus || "",
+          org_name: row.pdOrgName || row.name || "",
+          stage_id: row.pdStage || "",
+          label: row.pdLabel || "",
+          platform_company: row.pdPlatform || "",
+          deal_type: row.pdDealType || "",
+          mfg_type: row.pdMfgType || "",
+          industry: row.pdIndustry || "",
+          changeType: "REMOVED",
+        });
+      }
+    }
+    return merged;
+  }, [result, diff]);
+
   const navItems = [
     { id: "dashboard" as NavPage, label: "Dashboard", icon: LayoutDashboard, disabled: !result },
     { id: "process" as NavPage, label: "Process Files", icon: FolderInput },
     { id: "results" as NavPage, label: "Results & Export", icon: FileOutput, disabled: !result },
     { id: "source_national" as NavPage, label: "National PDSync", icon: FileSpreadsheet, disabled: !result },
     { id: "source_bookings" as NavPage, label: "Natman Bookings", icon: FileSpreadsheet, disabled: !result },
+    { id: "history" as NavPage, label: "Run History", icon: History },
     { id: "settings" as NavPage, label: "Settings", icon: Settings },
   ];
 
@@ -763,6 +1097,7 @@ export default function Dashboard() {
                 <h1 className="text-2xl font-bold text-[#1B2A4A]">Dashboard</h1>
                 <p className="text-sm text-muted-foreground mt-1">
                   Analysis completed in {result.elapsed_seconds}s
+                  {result.run_id && <span className="ml-2 text-[#1B2A4A] font-medium">(Run #{result.run_id})</span>}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -777,13 +1112,15 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {diff && <DiffSummaryCard diff={diff} />}
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-              <KpiCard title="Unique Parts" value={formatNumber(result.summary.total_unique_parts)} icon={Package} />
-              <KpiCard title="New Deals" value={formatNumber(result.summary.new_deals_count)} icon={Target} subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_new)}`} />
-              <KpiCard title="PD Deals" value={formatNumber(result.summary.pd_info_count)} icon={BarChart3} subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_pd)}`} />
-              <KpiCard title="Pipeline Value" value={formatCurrency(result.summary.total_pd_pipeline_value)} icon={DollarSign} trend="up" />
-              <KpiCard title="Won Deals" value={formatNumber(result.summary.won_deals_count)} icon={CheckCircle2} subtitle={formatCurrency(result.summary.won_deals_value)} trend="up" />
-              <KpiCard title="Open Pipeline" value={formatNumber(result.summary.open_deals_count)} icon={Users} subtitle={formatCurrency(result.summary.open_deals_value)} />
+              <KpiCard title="Unique Parts" value={formatNumber(result.summary.total_unique_parts)} icon={Package} delta={kpiDeltas?.uniqueParts} />
+              <KpiCard title="New Deals" value={formatNumber(result.summary.new_deals_count)} icon={Target} subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_new)}`} delta={kpiDeltas?.newDeals} />
+              <KpiCard title="PD Deals" value={formatNumber(result.summary.pd_info_count)} icon={BarChart3} subtitle={`Avg ${formatCurrency(result.summary.avg_deal_value_pd)}`} delta={kpiDeltas?.pdInfo} />
+              <KpiCard title="Pipeline Value" value={formatCurrency(result.summary.total_pd_pipeline_value)} icon={DollarSign} trend="up" delta={kpiDeltas?.pipelineValue} deltaCurrency />
+              <KpiCard title="Won Deals" value={formatNumber(result.summary.won_deals_count)} icon={CheckCircle2} subtitle={formatCurrency(result.summary.won_deals_value)} trend="up" delta={kpiDeltas?.wonDeals} />
+              <KpiCard title="Open Pipeline" value={formatNumber(result.summary.open_deals_count)} icon={Users} subtitle={formatCurrency(result.summary.open_deals_value)} delta={kpiDeltas?.openDeals} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -923,77 +1260,63 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {diff && <DiffSummaryCard diff={diff} />}
+
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4">
                 <TabsTrigger value="summary">Charts</TabsTrigger>
                 <TabsTrigger value="all_parts">All Parts ({formatNumber(result.sheets.all_unique_parts.length)})</TabsTrigger>
-                <TabsTrigger value="new_deals">New Deals ({formatNumber(result.sheets.new_deals.length)})</TabsTrigger>
-                <TabsTrigger value="pd_info">PD Info ({formatNumber(result.sheets.pd_info.length)})</TabsTrigger>
+                <TabsTrigger value="new_deals">
+                  New Deals ({formatNumber(newDealsWithDiff.length)})
+                  {diff && diff.newDeals.summary.added + diff.newDeals.summary.changed + diff.newDeals.summary.removed > 0 && (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                      {diff.newDeals.summary.added + diff.newDeals.summary.changed + diff.newDeals.summary.removed} changes
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="pd_info">
+                  PD Info ({formatNumber(pdInfoWithDiff.length)})
+                  {diff && diff.pdInfo.summary.added + diff.pdInfo.summary.changed + diff.pdInfo.summary.removed > 0 && (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                      {diff.pdInfo.summary.added + diff.pdInfo.summary.changed + diff.pdInfo.summary.removed} changes
+                    </span>
+                  )}
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="summary" className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Card className="border-0 shadow-sm">
-                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Label Distribution</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Pipeline Status</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={280}>
                         <PieChart>
-                          <Pie data={dictToChartData(result.analytics.label_distribution)} cx="50%" cy="50%" innerRadius={50} outerRadius={90} paddingAngle={3} dataKey="value" nameKey="name">
-                            {dictToChartData(result.analytics.label_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
+                          <Pie data={dictToChartData(result.analytics.pd_status_distribution)} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                            {dictToChartData(result.analytics.pd_status_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
                           </Pie>
-                          <Tooltip />
-                          <Legend />
+                          <Tooltip formatter={(v: number) => formatNumber(v)} />
                         </PieChart>
                       </ResponsiveContainer>
                     </CardContent>
                   </Card>
 
                   <Card className="border-0 shadow-sm">
-                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Pipeline Stage Distribution</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Deal Labels</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={280}>
-                        <BarChart data={dictToChartData(result.analytics.stage_distribution)}>
+                        <BarChart data={dictToChartData(result.analytics.label_distribution, "name", "value")} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis dataKey="name" angle={-30} textAnchor="end" height={80} tick={{ fontSize: 11 }} />
-                          <YAxis />
+                          <XAxis type="number" />
+                          <YAxis type="category" dataKey="name" width={120} />
                           <Tooltip />
-                          <Bar dataKey="value" fill={CHART_COLORS[3]} radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-0 shadow-sm">
-                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Industry Distribution</CardTitle></CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={280}>
-                        <PieChart>
-                          <Pie data={dictToChartData(result.analytics.industry_distribution)} cx="50%" cy="50%" outerRadius={100} paddingAngle={3} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
-                            {dictToChartData(result.analytics.industry_distribution).map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-0 shadow-sm">
-                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">New Deals by Status</CardTitle></CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={280}>
-                        <BarChart data={dictToChartData(result.analytics.new_deals_status_distribution)}>
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis dataKey="name" angle={-30} textAnchor="end" height={80} tick={{ fontSize: 11 }} />
-                          <YAxis />
-                          <Tooltip />
-                          <Bar dataKey="value" fill={CHART_COLORS[2]} radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </CardContent>
                   </Card>
 
                   <Card className="border-0 shadow-sm md:col-span-2">
-                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Top 15 New Deal Customers by Revenue</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-sm text-[#1B2A4A]">Top 15 New Deals by Revenue</CardTitle></CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={350}>
                         <BarChart data={result.analytics.top_customers_new}>
@@ -1028,8 +1351,9 @@ export default function Dashboard() {
               <TabsContent value="new_deals">
                 <Card className="border-0 shadow-sm">
                   <CardContent className="pt-6">
-                    <DataTable
-                      data={result.sheets.new_deals}
+                    <DiffDataTable
+                      data={newDealsWithDiff}
+                      showDiff={!!diff}
                       columns={[
                         { key: "name", label: "Customer" },
                         { key: "customer_part_id", label: "Part ID" },
@@ -1048,12 +1372,12 @@ export default function Dashboard() {
               <TabsContent value="pd_info">
                 <Card className="border-0 shadow-sm">
                   <CardContent className="pt-6">
-                    <DataTable
-                      data={result.sheets.pd_info}
+                    <DiffDataTable
+                      data={pdInfoWithDiff}
+                      showDiff={!!diff}
                       columns={[
                         { key: "pd_id", label: "PD ID" },
                         { key: "customer_part_id", label: "Part ID" },
-                        { key: "title", label: "Title" },
                         { key: "value", label: "Value", format: (v) => formatCurrency(v || 0) },
                         { key: "status", label: "Status" },
                         { key: "org_name", label: "Customer" },
@@ -1069,6 +1393,200 @@ export default function Dashboard() {
                 </Card>
               </TabsContent>
             </Tabs>
+          </div>
+        )}
+
+        {activePage === "history" && (
+          <div className="px-8 py-8">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-[#1B2A4A]">Run History</h1>
+              <p className="text-sm text-muted-foreground mt-1">View past runs and compare any two uploads</p>
+            </div>
+
+            <Card className="border-0 shadow-sm mb-6">
+              <CardHeader>
+                <CardTitle className="text-sm text-[#1B2A4A] flex items-center gap-2">
+                  <GitCompare className="h-4 w-4" />
+                  Compare Two Runs
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-end gap-4">
+                  <div className="flex-1">
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Older Run (Base)</p>
+                    <select
+                      value={compareRunA || ""}
+                      onChange={(e) => setCompareRunA(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select run...</option>
+                      {runs.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          Run #{r.id} — {new Date(r.createdAt).toLocaleDateString()} {new Date(r.createdAt).toLocaleTimeString()} ({r.newDealsCount} new, {r.pdInfoCount} PD)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Newer Run (Compare)</p>
+                    <select
+                      value={compareRunB || ""}
+                      onChange={(e) => setCompareRunB(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select run...</option>
+                      {runs.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          Run #{r.id} — {new Date(r.createdAt).toLocaleDateString()} {new Date(r.createdAt).toLocaleTimeString()} ({r.newDealsCount} new, {r.pdInfoCount} PD)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button
+                    onClick={runComparison}
+                    disabled={!compareRunA || !compareRunB || compareRunA === compareRunB || comparing}
+                    className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]"
+                  >
+                    {comparing ? <Spinner className="h-4 w-4" /> : <GitCompare className="h-4 w-4" />}
+                    {comparing ? "Comparing..." : "Compare"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {comparisonDiff && (
+              <div className="mb-6">
+                <DiffSummaryCard diff={comparisonDiff} />
+                <Tabs defaultValue="comp_new_deals">
+                  <TabsList className="mb-4">
+                    <TabsTrigger value="comp_new_deals">
+                      New Deals Diff
+                      {comparisonDiff.newDeals.summary.added + comparisonDiff.newDeals.summary.changed + comparisonDiff.newDeals.summary.removed > 0 && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                          {comparisonDiff.newDeals.summary.added + comparisonDiff.newDeals.summary.changed + comparisonDiff.newDeals.summary.removed}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="comp_pd_info">
+                      PD Info Diff
+                      {comparisonDiff.pdInfo.summary.added + comparisonDiff.pdInfo.summary.changed + comparisonDiff.pdInfo.summary.removed > 0 && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                          {comparisonDiff.pdInfo.summary.added + comparisonDiff.pdInfo.summary.changed + comparisonDiff.pdInfo.summary.removed}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="comp_new_deals">
+                    <Card className="border-0 shadow-sm">
+                      <CardContent className="pt-6">
+                        <DiffDataTable
+                          data={comparisonDiff.newDeals.rows.map((r: any) => ({
+                            customer_part_id: r.customerPartId,
+                            name: r.name || "",
+                            mapped_status: r.mappedStatus || "",
+                            mapped_probability: r.mappedProbability || "",
+                            mapped_med_rev: r.mappedMedRev || 0,
+                            mapped_pd_p2_time: r.mappedPdP2Time || "",
+                            first_order_date: r.firstOrderDate || "",
+                            calc_label: r.calcLabel || "",
+                            changeType: r.changeType,
+                            changes: r.changes,
+                          }))}
+                          showDiff
+                          columns={[
+                            { key: "name", label: "Customer" },
+                            { key: "customer_part_id", label: "Part ID" },
+                            { key: "mapped_status", label: "Status" },
+                            { key: "mapped_probability", label: "Probability" },
+                            { key: "mapped_med_rev", label: "Revenue", format: (v) => formatCurrency(v || 0) },
+                            { key: "calc_label", label: "Label" },
+                          ]}
+                        />
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                  <TabsContent value="comp_pd_info">
+                    <Card className="border-0 shadow-sm">
+                      <CardContent className="pt-6">
+                        <DiffDataTable
+                          data={comparisonDiff.pdInfo.rows.map((r: any) => ({
+                            pd_id: r.pdId || "",
+                            customer_part_id: r.customerPartId,
+                            value: r.pdValue || 0,
+                            status: r.pdStatus || "",
+                            name: r.pdOrgName || r.name || "",
+                            stage: r.pdStage || "",
+                            label: r.pdLabel || "",
+                            platform: r.pdPlatform || "",
+                            changeType: r.changeType,
+                            changes: r.changes,
+                          }))}
+                          showDiff
+                          columns={[
+                            { key: "pd_id", label: "PD ID" },
+                            { key: "customer_part_id", label: "Part ID" },
+                            { key: "value", label: "Value", format: (v) => formatCurrency(v || 0) },
+                            { key: "status", label: "Status" },
+                            { key: "name", label: "Customer" },
+                            { key: "stage", label: "Stage" },
+                            { key: "label", label: "Label" },
+                          ]}
+                        />
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            )}
+
+            <Card className="border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-sm text-[#1B2A4A]">Past Runs</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {runs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No runs yet. Process your first files to get started.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {runs.map((run) => (
+                      <div key={run.id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/30 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="h-8 w-8 rounded-full bg-[#1B2A4A]/10 flex items-center justify-center text-xs font-bold text-[#1B2A4A]">
+                            #{run.id}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">
+                              {new Date(run.createdAt).toLocaleDateString()} {new Date(run.createdAt).toLocaleTimeString()}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Cutoff: {run.cutoffYear || "—"} · FAI: {run.faiThreshold || "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-6 text-xs">
+                          <div className="text-center">
+                            <p className="font-semibold text-[#1B2A4A]">{formatNumber(run.totalUniqueParts)}</p>
+                            <p className="text-muted-foreground">Parts</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="font-semibold text-[#1B2A4A]">{formatNumber(run.newDealsCount)}</p>
+                            <p className="text-muted-foreground">New Deals</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="font-semibold text-[#1B2A4A]">{formatNumber(run.pdInfoCount)}</p>
+                            <p className="text-muted-foreground">PD Info</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="font-semibold text-[#1B2A4A]">{formatCurrency(run.totalPdPipelineValue)}</p>
+                            <p className="text-muted-foreground">Pipeline</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 

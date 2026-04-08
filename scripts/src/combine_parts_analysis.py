@@ -896,6 +896,7 @@ def main(cli_args=None):
     parser.add_argument('--fai-threshold', type=float, help='FAI threshold (0-1)')
     parser.add_argument('--json-output', help='Path to write JSON summary')
     parser.add_argument('--pd-cache-file', help='Path to pd_cache.json (optional)')
+    parser.add_argument('--previous-run-json', help='Path to JSON with previous run parts for diff')
     args = parser.parse_args(cli_args)
 
     if args.output_dir:
@@ -922,6 +923,24 @@ def main(cli_args=None):
     print("=" * 60)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    prev_new_deals = {}
+    prev_pd_info = {}
+    if args.previous_run_json and os.path.exists(args.previous_run_json):
+        try:
+            with open(args.previous_run_json, 'r') as pf:
+                prev_data = json.load(pf)
+            for p in prev_data:
+                key = str(p.get('customerPartId', '')).strip().upper()
+                if not key:
+                    continue
+                if p.get('sheetType') == 'new_deals':
+                    prev_new_deals[key] = p
+                elif p.get('sheetType') == 'pd_info':
+                    prev_pd_info[key] = p
+            print(f"  Loaded previous run: {len(prev_new_deals)} new_deals, {len(prev_pd_info)} pd_info parts")
+        except Exception as e:
+            print(f"  Warning: Could not load previous run data: {e}")
 
     print(f"\n[1/7] Processing Development Booking...")
     print(f"  Input: {os.path.basename(booking_file)}")
@@ -1011,6 +1030,7 @@ def main(cli_args=None):
     print(f"  All_Unique_Parts: {len(all_parts_sorted)} parts")
 
     ws_new = wb.create_sheet("New_Deals")
+    has_diff = bool(prev_new_deals or prev_pd_info)
     new_headers = [
         'ORG_ID', 'NAME', 'CUSTOMER_PART_ID',
         'Mapped_Status', 'Mapped_Probability', 'Mapped_Med_Rev',
@@ -1020,10 +1040,14 @@ def main(cli_args=None):
         'FIRST_ORDER_DATE', 'FIRST_ORDER_NO', 'LANDMARK_QUOTE_NO',
         'CALC_LABEL'
     ]
+    if has_diff:
+        new_headers.append('Change')
     write_header(ws_new, new_headers)
     new_formats = [None, None, None, None, None, '$#,##0.00',
                    'MM/DD/YYYY', 'MM/DD/YYYY', 'MM/DD/YYYY', 'MM/DD/YYYY',
                    None, 'MM/DD/YYYY', None, None, None]
+    if has_diff:
+        new_formats.append(None)
 
     for idx, cr in enumerate(unmatched_rows, 2):
         cust_part = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
@@ -1057,7 +1081,7 @@ def main(cli_args=None):
                 except (ValueError, TypeError):
                     pass
 
-        write_row(ws_new, idx, [
+        row_vals = [
             cr.get('org_id', ''), cr.get('name', ''), cr.get('cust_part', ''),
             cr.get('mapped_status', ''), cr.get('mapped_probability', ''),
             cr.get('mapped_med_rev', ''),
@@ -1066,11 +1090,35 @@ def main(cli_args=None):
             cr.get('quote_number', ''),
             first_order_date, first_order_no, lm_quote_no,
             calc_label
-        ], new_formats)
+        ]
+        if has_diff:
+            prev = prev_new_deals.get(cust_part)
+            if prev is None:
+                change_val = 'NEW'
+            else:
+                compare_fields = [
+                    ('mappedStatus', cr.get('mapped_status', '')),
+                    ('mappedProbability', cr.get('mapped_probability', '')),
+                    ('mappedMedRev', cr.get('mapped_med_rev', '')),
+                ]
+                changed = False
+                for pkey, curr_val in compare_fields:
+                    prev_val = prev.get(pkey, '')
+                    if str(curr_val).strip() != str(prev_val).strip():
+                        changed = True
+                        break
+                change_val = 'CHANGED' if changed else ''
+            row_vals.append(change_val)
+        write_row(ws_new, idx, row_vals, new_formats)
 
-    set_col_widths(ws_new, [10, 35, 22, 20, 18, 16, 14, 14, 14, 14, 14, 14, 14, 14, 12])
+    nd_col_count = len(new_headers)
+    nd_col_letter = get_column_letter(nd_col_count)
+    col_widths_new = [10, 35, 22, 20, 18, 16, 14, 14, 14, 14, 14, 14, 14, 14, 12]
+    if has_diff:
+        col_widths_new.append(12)
+    set_col_widths(ws_new, col_widths_new)
     ws_new.freeze_panes = 'A2'
-    ws_new.auto_filter.ref = f"A1:O{len(unmatched_rows) + 1}"
+    ws_new.auto_filter.ref = f"A1:{nd_col_letter}{len(unmatched_rows) + 1}"
     repeat_count = sum(1 for r in range(2, len(unmatched_rows) + 2) if ws_new.cell(row=r, column=15).value == 'Repeat')
     new_count = sum(1 for r in range(2, len(unmatched_rows) + 2) if ws_new.cell(row=r, column=15).value == 'New Part')
     nc_count = sum(1 for r in range(2, len(unmatched_rows) + 2) if ws_new.cell(row=r, column=15).value == 'New Customer')
@@ -1087,6 +1135,8 @@ def main(cli_args=None):
         'PD_title', 'PD_value', 'PD_status', 'PD_stage',
         'PD_label', 'PD_industry', 'PD_deal_type', 'PD_mfg_type',
     ]
+    if has_diff:
+        pd_headers.append('Change')
     write_header(ws_pd, pd_headers)
 
     for idx, cr in enumerate(matched_rows, 2):
@@ -1094,7 +1144,7 @@ def main(cli_args=None):
         dd = deal_details.get(pd_id, {})
         cust_part = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
         lm = landmark.get(cust_part, {})
-        write_row(ws_pd, idx, [
+        pd_row_vals = [
             pd_id, cr.get('org_id', ''), cr.get('name', ''), cr.get('cust_part', ''),
             cr.get('mapped_status', ''), cr.get('mapped_probability', ''),
             cr.get('mapped_med_rev', ''),
@@ -1106,11 +1156,38 @@ def main(cli_args=None):
             dd.get('status', ''), dd.get('stage_id', ''),
             dd.get('label', ''), dd.get('industry', ''),
             dd.get('deal_type', ''), dd.get('mfg_type', ''),
-        ])
+        ]
+        if has_diff:
+            prev = prev_pd_info.get(cust_part)
+            if prev is None:
+                pd_change = 'NEW'
+            else:
+                pd_compare = [
+                    ('mappedStatus', cr.get('mapped_status', '')),
+                    ('mappedProbability', cr.get('mapped_probability', '')),
+                    ('mappedMedRev', cr.get('mapped_med_rev', '')),
+                    ('pdValue', dd.get('value', '')),
+                    ('pdStatus', dd.get('status', '')),
+                    ('pdStage', dd.get('stage_id', '')),
+                ]
+                pd_changed = False
+                for pkey, curr_val in pd_compare:
+                    prev_val = prev.get(pkey, '')
+                    if str(curr_val).strip() != str(prev_val).strip():
+                        pd_changed = True
+                        break
+                pd_change = 'CHANGED' if pd_changed else ''
+            pd_row_vals.append(pd_change)
+        write_row(ws_pd, idx, pd_row_vals)
 
-    set_col_widths(ws_pd, [10, 22, 30, 12, 10, 20, 30, 10, 10, 18, 18, 18, 18, 18, 14, 14, 12, 12, 12, 12, 12, 20, 20])
+    pd_col_count = len(pd_headers)
+    pd_col_letter = get_column_letter(pd_col_count)
+    col_widths_pd = [10, 22, 30, 12, 10, 20, 30, 10, 10, 18, 18, 18, 18, 18, 14, 14, 12, 12, 12, 12, 12, 20, 20]
+    if has_diff:
+        col_widths_pd.append(12)
+    set_col_widths(ws_pd, col_widths_pd)
     ws_pd.freeze_panes = 'A2'
-    ws_pd.auto_filter.ref = f"A1:W{len(matched_rows) + 1}"
+    ws_pd.auto_filter.ref = f"A1:{pd_col_letter}{len(matched_rows) + 1}"
     print(f"  PD_Info: {len(matched_rows)} rows ({len(deal_details)} deals fetched from Pipedrive)")
 
     wb.save(OUTPUT_FILE)
