@@ -1030,7 +1030,7 @@ def main(cli_args=None):
     print(f"  All_Unique_Parts: {len(all_parts_sorted)} parts")
 
     ws_new = wb.create_sheet("New_Deals")
-    has_diff = bool(prev_new_deals or prev_pd_info)
+    has_diff = True
     new_headers = [
         'ORG_ID', 'NAME', 'CUSTOMER_PART_ID',
         'Mapped_Status', 'Mapped_Probability', 'Mapped_Med_Rev',
@@ -1092,10 +1092,12 @@ def main(cli_args=None):
             calc_label
         ]
         if has_diff:
-            prev = prev_new_deals.get(cust_part)
-            if prev is None:
+            if not prev_new_deals:
+                change_val = ''
+            elif cust_part not in prev_new_deals:
                 change_val = 'NEW'
             else:
+                prev = prev_new_deals[cust_part]
                 compare_fields = [
                     ('mappedStatus', cr.get('mapped_status', '')),
                     ('mappedProbability', cr.get('mapped_probability', '')),
@@ -1158,10 +1160,12 @@ def main(cli_args=None):
             dd.get('deal_type', ''), dd.get('mfg_type', ''),
         ]
         if has_diff:
-            prev = prev_pd_info.get(cust_part)
-            if prev is None:
+            if not prev_pd_info:
+                pd_change = ''
+            elif cust_part not in prev_pd_info:
                 pd_change = 'NEW'
             else:
+                prev = prev_pd_info[cust_part]
                 pd_compare = [
                     ('mappedStatus', cr.get('mapped_status', '')),
                     ('mappedProbability', cr.get('mapped_probability', '')),

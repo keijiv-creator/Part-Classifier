@@ -544,10 +544,10 @@ export default function Dashboard() {
 
   const fetchRuns = async () => {
     try {
-      const resp = await fetch(`${API_BASE}/analysis/runs`);
+      const resp = await fetch(`${API_BASE}/analysis/runs?limit=200`);
       if (resp.ok) {
         const data = await resp.json();
-        setRuns(data);
+        setRuns(data.runs || data);
       }
     } catch {}
   };

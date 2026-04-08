@@ -254,6 +254,8 @@ router.post(
         }
       } catch (dbErr: any) {
         console.error("DB persistence error (non-fatal):", dbErr.message);
+        jsonData.dbPersistenceWarning = "Run data could not be saved to history: " + dbErr.message;
+        runId = null;
       }
 
       let diff = null;
@@ -297,22 +299,29 @@ router.post(
   }
 );
 
-router.get("/analysis/runs", async (_req: Request, res: Response) => {
+router.get("/analysis/runs", async (req: Request, res: Response) => {
   try {
-    const runs = await db.select({
-      id: runsTable.id,
-      createdAt: runsTable.createdAt,
-      cutoffYear: runsTable.cutoffYear,
-      faiThreshold: runsTable.faiThreshold,
-      totalUniqueParts: runsTable.totalUniqueParts,
-      newDealsCount: runsTable.newDealsCount,
-      pdInfoCount: runsTable.pdInfoCount,
-      totalNewDealsRevenue: runsTable.totalNewDealsRevenue,
-      totalPdPipelineValue: runsTable.totalPdPipelineValue,
-      wonDealsCount: runsTable.wonDealsCount,
-      openDealsCount: runsTable.openDealsCount,
-    }).from(runsTable).orderBy(desc(runsTable.createdAt)).limit(50);
-    res.json(runs);
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+
+    const [runs, countResult] = await Promise.all([
+      db.select({
+        id: runsTable.id,
+        createdAt: runsTable.createdAt,
+        cutoffYear: runsTable.cutoffYear,
+        faiThreshold: runsTable.faiThreshold,
+        totalUniqueParts: runsTable.totalUniqueParts,
+        newDealsCount: runsTable.newDealsCount,
+        pdInfoCount: runsTable.pdInfoCount,
+        totalNewDealsRevenue: runsTable.totalNewDealsRevenue,
+        totalPdPipelineValue: runsTable.totalPdPipelineValue,
+        wonDealsCount: runsTable.wonDealsCount,
+        openDealsCount: runsTable.openDealsCount,
+      }).from(runsTable).orderBy(desc(runsTable.createdAt)).limit(limit).offset(offset),
+      db.select({ count: sql<number>`count(*)` }).from(runsTable),
+    ]);
+
+    res.json({ runs, total: Number(countResult[0]?.count || 0), limit, offset });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
