@@ -429,6 +429,25 @@ export default function Dashboard() {
     return pdf.output("blob");
   };
 
+  const generateDashboardImageBlob = async (): Promise<Blob | null> => {
+    if (!dashboardRef.current) return null;
+    const html2canvas = (await import("html2canvas-pro")).default;
+
+    const el = dashboardRef.current;
+    const canvas = await html2canvas(el, {
+      scale: 4,
+      useCORS: true,
+      backgroundColor: "#F0F2F5",
+      logging: false,
+      windowWidth: el.scrollWidth,
+      windowHeight: el.scrollHeight,
+    });
+
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    });
+  };
+
   const downloadDashboardPdf = async () => {
     setPdfExporting(true);
     try {
@@ -451,13 +470,13 @@ export default function Dashboard() {
     if (!result) return;
     setZipExporting(true);
     try {
-      const pdfBlob = await generateDashboardPdfBlob();
+      const imageBlob = await generateDashboardImageBlob();
 
       const formData = new FormData();
       if (result.output_file) formData.append("parts_analysis", result.output_file);
       if (result.pdsync_file) formData.append("pdsync", result.pdsync_file);
       if (result.natman_bookings_file) formData.append("natman_bookings", result.natman_bookings_file);
-      if (pdfBlob) formData.append("dashboard_pdf", pdfBlob, "Dashboard.pdf");
+      if (imageBlob) formData.append("dashboard_image", imageBlob, "Dashboard.png");
 
       const resp = await fetch(`${API_BASE}/analysis/download-zip`, {
         method: "POST",

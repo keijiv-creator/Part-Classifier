@@ -107,7 +107,7 @@ const zipUpload = multer({ dest: "/tmp/uploads/", limits: { fileSize: 50 * 1024 
 
 router.post(
   "/analysis/download-zip",
-  zipUpload.single("dashboard_pdf"),
+  zipUpload.single("dashboard_image"),
   (req: Request, res: Response) => {
     const { parts_analysis, natman_bookings, pdsync } = req.body || {};
 
@@ -125,7 +125,7 @@ router.post(
     validate(natman_bookings, "Natman_Bookings.xlsx");
 
     if (req.file) {
-      filesToInclude.push({ absPath: req.file.path, name: "Dashboard.pdf" });
+      filesToInclude.push({ absPath: req.file.path, name: "Dashboard.png" });
     }
 
     if (filesToInclude.length === 0) {
