@@ -7,6 +7,7 @@ export const runsTable = pgTable("runs", {
   cutoffYear: integer("cutoff_year"),
   faiThreshold: real("fai_threshold"),
   summaryJson: jsonb("summary_json"),
+  resultJson: jsonb("result_json"),
   totalUniqueParts: integer("total_unique_parts"),
   newDealsCount: integer("new_deals_count"),
   pdInfoCount: integer("pd_info_count"),

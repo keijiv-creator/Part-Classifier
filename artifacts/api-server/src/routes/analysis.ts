@@ -183,11 +183,19 @@ router.post(
 
       let runId: number | null = null;
       try {
+        const resultJsonToStore = {
+          summary: jsonData.summary,
+          analytics: jsonData.analytics,
+          sheets: jsonData.sheets,
+          source_data: jsonData.source_data,
+        };
+
         const [run] = await db.insert(runsTable).values({
           reportDate: reportDate,
           cutoffYear: cutoffYear ? parseInt(cutoffYear) : null,
           faiThreshold: 0.50,
           summaryJson: jsonData.summary,
+          resultJson: resultJsonToStore,
           totalUniqueParts: jsonData.summary.total_unique_parts,
           newDealsCount: jsonData.summary.new_deals_count,
           pdInfoCount: jsonData.summary.pd_info_count,
@@ -324,11 +332,43 @@ router.get("/analysis/runs", async (req: Request, res: Response) => {
         totalPdPipelineValue: runsTable.totalPdPipelineValue,
         wonDealsCount: runsTable.wonDealsCount,
         openDealsCount: runsTable.openDealsCount,
+        hasResultJson: sql<boolean>`${runsTable.resultJson} IS NOT NULL`.as("has_result_json"),
       }).from(runsTable).orderBy(desc(runsTable.reportDate), desc(runsTable.createdAt)).limit(limit).offset(offset),
       db.select({ count: sql<number>`count(*)` }).from(runsTable),
     ]);
 
     res.json({ runs, total: Number(countResult[0]?.count || 0), limit, offset });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/analysis/runs/:id", async (req: Request, res: Response) => {
+  try {
+    const runId = Number(req.params.id);
+    if (!runId || isNaN(runId)) {
+      res.status(400).json({ error: "Invalid run ID" });
+      return;
+    }
+
+    const [run] = await db.select().from(runsTable).where(eq(runsTable.id, runId)).limit(1);
+    if (!run) {
+      res.status(404).json({ error: "Run not found" });
+      return;
+    }
+
+    if (!run.resultJson) {
+      res.status(404).json({ error: "Full result data not available for this run" });
+      return;
+    }
+
+    res.json({
+      id: run.id,
+      reportDate: run.reportDate,
+      createdAt: run.createdAt,
+      cutoffYear: run.cutoffYear,
+      result: run.resultJson,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

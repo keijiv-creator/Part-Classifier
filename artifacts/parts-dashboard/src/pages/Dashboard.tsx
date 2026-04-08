@@ -40,6 +40,9 @@ import {
   Calendar,
   Key,
   AlertTriangle,
+  Eye,
+  ArrowLeft,
+  Loader2,
 } from "lucide-react";
 import {
   BarChart,
@@ -82,12 +85,13 @@ interface DiffData {
 }
 
 interface AnalysisResult {
-  output_file: string;
-  natman_bookings_file?: string;
-  pdsync_file?: string;
-  elapsed_seconds: number;
+  output_file: string | null;
+  natman_bookings_file?: string | null;
+  pdsync_file?: string | null;
+  elapsed_seconds?: number;
   run_id?: number;
   diff?: DiffData | null;
+  _historical?: boolean;
   summary: {
     total_unique_parts: number;
     new_deals_count: number;
@@ -121,10 +125,10 @@ interface AnalysisResult {
     new_deals: any[];
     pd_info: any[];
   };
-  source_data: {
+  source_data?: {
     bookings_sheets: Record<string, { headers: string[]; rows: any[] }>;
     national_sheets: Record<string, { headers: string[]; rows: any[] }>;
-  };
+  } | null;
 }
 
 interface RunSummary {
@@ -140,6 +144,7 @@ interface RunSummary {
   totalPdPipelineValue: number;
   wonDealsCount: number;
   openDealsCount: number;
+  hasResultJson?: boolean;
 }
 
 function formatCurrency(value: number): string {
@@ -554,6 +559,46 @@ export default function Dashboard() {
   const [comparisonDiff, setComparisonDiff] = useState<DiffData | null>(null);
   const [comparing, setComparing] = useState(false);
 
+  const [viewingHistoricalRun, setViewingHistoricalRun] = useState<{ id: number; reportDate: string | null; createdAt: string } | null>(null);
+  const [loadingRunId, setLoadingRunId] = useState<number | null>(null);
+
+  const loadHistoricalRun = async (runId: number) => {
+    setLoadingRunId(runId);
+    try {
+      const resp = await fetch(`${API_BASE}/analysis/runs/${runId}`);
+      if (!resp.ok) {
+        const err = await resp.json();
+        setError(err.error || "Failed to load run");
+        return;
+      }
+      const data = await resp.json();
+      const historicalResult: AnalysisResult = {
+        ...data.result,
+        run_id: data.id,
+        output_file: null,
+        natman_bookings_file: null,
+        pdsync_file: null,
+        diff: null,
+        _historical: true,
+      };
+      setResult(historicalResult);
+      setViewingHistoricalRun({ id: data.id, reportDate: data.reportDate, createdAt: data.createdAt });
+      setActiveTab("summary");
+      setActivePage("dashboard");
+      setError("");
+    } catch (err: any) {
+      setError(err.message || "Failed to load run");
+    } finally {
+      setLoadingRunId(null);
+    }
+  };
+
+  const clearHistoricalRun = () => {
+    setViewingHistoricalRun(null);
+    setResult(null);
+    setActivePage("process");
+  };
+
   const fetchRuns = async () => {
     try {
       const resp = await fetch(`${API_BASE}/analysis/runs?limit=200`);
@@ -650,6 +695,7 @@ export default function Dashboard() {
 
       const data: AnalysisResult = await resp.json();
       setResult(data);
+      setViewingHistoricalRun(null);
       setProgress(100);
       setActiveTab("summary");
       setActivePage("dashboard");
@@ -909,6 +955,27 @@ export default function Dashboard() {
       </aside>
 
       <main className="flex-1 overflow-auto">
+        {viewingHistoricalRun && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <History className="h-4 w-4 text-amber-600" />
+              <span className="text-sm font-medium text-amber-800">
+                Viewing Run #{viewingHistoricalRun.id} — Report Date: {viewingHistoricalRun.reportDate || new Date(viewingHistoricalRun.createdAt).toLocaleDateString()}
+              </span>
+              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-[10px]">Historical</Badge>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearHistoricalRun}
+              className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-100"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to current
+            </Button>
+          </div>
+        )}
+
         {activePage === "process" && (
           <div className="max-w-4xl mx-auto px-8 py-8">
             <div className="mb-8">
@@ -1179,20 +1246,22 @@ export default function Dashboard() {
               <div>
                 <h1 className="text-2xl font-bold text-[#1B2A4A]">Dashboard</h1>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Analysis completed in {result.elapsed_seconds}s
+                  {result.elapsed_seconds ? `Analysis completed in ${result.elapsed_seconds}s` : "Historical run data"}
                   {result.run_id && <span className="ml-2 text-[#1B2A4A] font-medium">(Run #{result.run_id})</span>}
                 </p>
               </div>
-              <div className="flex gap-2">
-                <Button onClick={downloadDashboardPdf} disabled={pdfExporting} variant="outline" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
-                  {pdfExporting ? <Spinner className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                  {pdfExporting ? "Exporting..." : "Download PDF"}
-                </Button>
-                <Button onClick={downloadCombinedZip} disabled={zipExporting} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
-                  {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-                  {zipExporting ? "Building Zip..." : "Download All (Zip)"}
-                </Button>
-              </div>
+              {!viewingHistoricalRun && (
+                <div className="flex gap-2">
+                  <Button onClick={downloadDashboardPdf} disabled={pdfExporting} variant="outline" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                    {pdfExporting ? <Spinner className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                    {pdfExporting ? "Exporting..." : "Download PDF"}
+                  </Button>
+                  <Button onClick={downloadCombinedZip} disabled={zipExporting} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                    {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                    {zipExporting ? "Building Zip..." : "Download All (Zip)"}
+                  </Button>
+                </div>
+              )}
             </div>
 
             {diff && <DiffSummaryCard diff={diff} />}
@@ -1336,10 +1405,12 @@ export default function Dashboard() {
                     PDSync
                   </Button>
                 )}
-                <Button onClick={downloadCombinedZip} disabled={zipExporting} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
-                  {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-                  {zipExporting ? "Building Zip..." : "Download All (Zip)"}
-                </Button>
+                {!viewingHistoricalRun && (
+                  <Button onClick={downloadCombinedZip} disabled={zipExporting} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                    {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                    {zipExporting ? "Building Zip..." : "Download All (Zip)"}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -1664,6 +1735,21 @@ export default function Dashboard() {
                             <p className="font-semibold text-[#1B2A4A]">{formatCurrency(run.totalPdPipelineValue)}</p>
                             <p className="text-muted-foreground">Pipeline</p>
                           </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 ml-2"
+                            onClick={() => loadHistoricalRun(run.id)}
+                            disabled={loadingRunId === run.id || run.hasResultJson === false}
+                            title={run.hasResultJson === false ? "Full data not available for this run" : "Load this run's full dashboard"}
+                          >
+                            {loadingRunId === run.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5" />
+                            )}
+                            {loadingRunId === run.id ? "Loading..." : "Load"}
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -1674,7 +1760,15 @@ export default function Dashboard() {
           </div>
         )}
 
-        {activePage === "source_national" && result && (() => {
+        {activePage === "source_national" && result && !result.source_data && (
+          <div className="px-8 py-16 text-center">
+            <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <h2 className="text-lg font-semibold text-[#1B2A4A] mb-1">Source Data Not Available</h2>
+            <p className="text-sm text-muted-foreground">Source data was not stored for this historical run.</p>
+          </div>
+        )}
+
+        {activePage === "source_national" && result && result.source_data && (() => {
           const sheets = result.source_data.national_sheets;
           const sheetNames = Object.keys(sheets);
           const defaultSheet = sheetNames[0] || "";
@@ -1685,13 +1779,21 @@ export default function Dashboard() {
               sheets={sheets}
               sheetNames={sheetNames}
               defaultSheet={defaultSheet}
-              downloadAction={downloadPDSync}
+              downloadAction={viewingHistoricalRun ? undefined : downloadPDSync}
               downloadLabel="Download PDSync"
             />
           );
         })()}
 
-        {activePage === "source_bookings" && result && (() => {
+        {activePage === "source_bookings" && result && !result.source_data && (
+          <div className="px-8 py-16 text-center">
+            <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <h2 className="text-lg font-semibold text-[#1B2A4A] mb-1">Source Data Not Available</h2>
+            <p className="text-sm text-muted-foreground">Source data was not stored for this historical run.</p>
+          </div>
+        )}
+
+        {activePage === "source_bookings" && result && result.source_data && (() => {
           const sheets = result.source_data.bookings_sheets;
           const sheetNames = Object.keys(sheets);
           const defaultSheet = sheetNames[0] || "";
@@ -1702,7 +1804,7 @@ export default function Dashboard() {
               sheets={sheets}
               sheetNames={sheetNames}
               defaultSheet={defaultSheet}
-              downloadAction={downloadNatmanBookings}
+              downloadAction={viewingHistoricalRun ? undefined : downloadNatmanBookings}
               downloadLabel="Download Natman Bookings"
             />
           );
