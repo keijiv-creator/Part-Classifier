@@ -123,11 +123,10 @@ router.post(
     ];
 
     const cutoffYear = req.body?.cutoff_year;
-    const faiThreshold = req.body?.fai_threshold;
-    const reportDate = req.body?.report_date || new Date().toISOString().slice(0, 10);
+    const rawReportDate = req.body?.report_date || new Date().toISOString().slice(0, 10);
+    const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(rawReportDate) ? rawReportDate : new Date().toISOString().slice(0, 10);
     const pipedriveApiKey = req.body?.pipedrive_api_key;
     if (cutoffYear) args.push("--cutoff-year", String(cutoffYear));
-    if (faiThreshold) args.push("--fai-threshold", String(faiThreshold));
 
     let prevRunJsonPath: string | null = null;
     try {
@@ -187,7 +186,7 @@ router.post(
         const [run] = await db.insert(runsTable).values({
           reportDate: reportDate,
           cutoffYear: cutoffYear ? parseInt(cutoffYear) : null,
-          faiThreshold: faiThreshold ? parseFloat(faiThreshold) : null,
+          faiThreshold: 0.50,
           summaryJson: jsonData.summary,
           totalUniqueParts: jsonData.summary.total_unique_parts,
           newDealsCount: jsonData.summary.new_deals_count,

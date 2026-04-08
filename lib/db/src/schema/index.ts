@@ -1,9 +1,9 @@
-import { pgTable, serial, text, timestamp, real, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, real, integer, jsonb, date } from "drizzle-orm/pg-core";
 
 export const runsTable = pgTable("runs", {
   id: serial("id").primaryKey(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  reportDate: text("report_date"),
+  reportDate: date("report_date"),
   cutoffYear: integer("cutoff_year"),
   faiThreshold: real("fai_threshold"),
   summaryJson: jsonb("summary_json"),
