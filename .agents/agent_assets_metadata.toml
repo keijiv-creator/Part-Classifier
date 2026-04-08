@@ -24,3 +24,9 @@ id = "Rr4W2ED6JM2p-DQcTqDId"
 uri = "file://output/Parts_Analysis_20260405_223047.xlsx"
 type = "table"
 title = "Parts Analysis - Updated CALC_LABEL Logic"
+
+[[outputs]]
+id = "8szjlRfqM-GoobLzY7gW3"
+uri = "file://Parts_Analysis_Process_Documentation.pdf"
+type = "pdf"
+title = "Parts Analysis Pipeline - Process Documentation"
