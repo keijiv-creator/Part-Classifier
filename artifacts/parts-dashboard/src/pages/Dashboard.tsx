@@ -561,6 +561,7 @@ export default function Dashboard() {
 
   const [viewingHistoricalRun, setViewingHistoricalRun] = useState<{ id: number; reportDate: string | null; createdAt: string } | null>(null);
   const [loadingRunId, setLoadingRunId] = useState<number | null>(null);
+  const [savedCurrentResult, setSavedCurrentResult] = useState<AnalysisResult | null>(null);
 
   const loadHistoricalRun = async (runId: number) => {
     setLoadingRunId(runId);
@@ -581,6 +582,9 @@ export default function Dashboard() {
         diff: null,
         _historical: true,
       };
+      if (!viewingHistoricalRun && result) {
+        setSavedCurrentResult(result);
+      }
       setResult(historicalResult);
       setViewingHistoricalRun({ id: data.id, reportDate: data.reportDate, createdAt: data.createdAt });
       setActiveTab("summary");
@@ -595,8 +599,14 @@ export default function Dashboard() {
 
   const clearHistoricalRun = () => {
     setViewingHistoricalRun(null);
-    setResult(null);
-    setActivePage("process");
+    if (savedCurrentResult) {
+      setResult(savedCurrentResult);
+      setSavedCurrentResult(null);
+      setActivePage("dashboard");
+    } else {
+      setResult(null);
+      setActivePage("process");
+    }
   };
 
   const fetchRuns = async () => {
@@ -696,6 +706,7 @@ export default function Dashboard() {
       const data: AnalysisResult = await resp.json();
       setResult(data);
       setViewingHistoricalRun(null);
+      setSavedCurrentResult(null);
       setProgress(100);
       setActiveTab("summary");
       setActivePage("dashboard");
