@@ -3,6 +3,7 @@ import multer from "multer";
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
+import archiver from "archiver";
 
 const router = Router();
 const upload = multer({ dest: "/tmp/uploads/" });
@@ -101,5 +102,53 @@ router.get("/analysis/download", (req: Request, res: Response) => {
   }
   res.download(resolved, path.basename(resolved));
 });
+
+const zipUpload = multer({ dest: "/tmp/uploads/", limits: { fileSize: 50 * 1024 * 1024 } });
+
+router.post(
+  "/analysis/download-zip",
+  zipUpload.single("dashboard_pdf"),
+  (req: Request, res: Response) => {
+    const { parts_analysis, natman_bookings, pdsync } = req.body || {};
+
+    const filesToInclude: { absPath: string; name: string }[] = [];
+
+    const validate = (p: string | undefined, label: string) => {
+      if (!p) return;
+      const resolved = path.resolve(p);
+      if (!resolved.startsWith("/tmp/") || !fs.existsSync(resolved)) return;
+      filesToInclude.push({ absPath: resolved, name: label });
+    };
+
+    validate(parts_analysis, "Parts_Analysis.xlsx");
+    validate(pdsync, "National_PDSync_PDUploadPreview.xlsx");
+    validate(natman_bookings, "Natman_Bookings.xlsx");
+
+    if (req.file) {
+      filesToInclude.push({ absPath: req.file.path, name: "Dashboard.pdf" });
+    }
+
+    if (filesToInclude.length === 0) {
+      res.status(400).json({ error: "No valid files to include" });
+      return;
+    }
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="Combined_Analysis_${date}.zip"`);
+
+    const archive = archiver("zip", { zlib: { level: 5 } });
+    archive.on("error", (err) => {
+      res.status(500).json({ error: err.message });
+    });
+    archive.pipe(res);
+
+    for (const f of filesToInclude) {
+      archive.file(f.absPath, { name: f.name });
+    }
+
+    archive.finalize();
+  }
+);
 
 export default router;

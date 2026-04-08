@@ -27,13 +27,15 @@ pnpm workspace monorepo using TypeScript. Contains a Parts Analysis Dashboard th
 - Configurable parameters: Quote Cutoff Year, FAI Threshold, Pipedrive Sync toggle
 - Tabbed results: Sales Analytics, Charts, All Parts, New Deals, PD Info
 - Sidebar tabs for generated outputs: National PDSync, Natman Bookings
-- Download buttons for all generated files (Combined Analysis, PDSync, Natman Bookings)
+- Download buttons for all generated files (PDSync, Natman Bookings, Dashboard PDF)
+- "Download All (Zip)" button bundles Parts_Analysis + National_PDSync + Natman_Bookings + Dashboard PDF into a single zip
 - KPI cards, pie charts, bar charts for sales analytics
 
 ### API Server (`artifacts/api-server`)
 - Express 5 backend
 - `POST /api/analysis/run` — accepts xlsx file uploads (multipart: `national_file`, `booking_file`), runs Python analysis, returns JSON
 - `GET /api/analysis/download?path=...` — serves generated Excel files for download
+- `POST /api/analysis/download-zip` — bundles multiple output files + dashboard PDF into a zip (multipart: file paths + optional `dashboard_pdf` blob)
 - `GET /api/healthz` — health check
 
 ## Python Analysis Script

@@ -31,6 +31,7 @@ import {
   CloudUpload,
   X,
   FileText,
+  Archive,
 } from "lucide-react";
 import {
   BarChart,
@@ -391,47 +392,91 @@ export default function Dashboard() {
 
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [zipExporting, setZipExporting] = useState(false);
+
+  const generateDashboardPdfBlob = async (): Promise<Blob | null> => {
+    if (!dashboardRef.current) return null;
+    const html2canvas = (await import("html2canvas-pro")).default;
+    const { jsPDF } = await import("jspdf");
+
+    const el = dashboardRef.current;
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#F0F2F5",
+      logging: false,
+      windowWidth: el.scrollWidth,
+      windowHeight: el.scrollHeight,
+    });
+
+    const imgData = canvas.toDataURL("image/png");
+    const imgW = canvas.width;
+    const imgH = canvas.height;
+
+    const pageW = 297;
+    const pageH = 210;
+    const margin = 6;
+    const usableW = pageW - margin * 2;
+    const usableH = pageH - margin * 2;
+    const ratio = Math.min(usableW / imgW, usableH / imgH);
+    const renderW = imgW * ratio;
+    const renderH = imgH * ratio;
+    const offsetX = margin + (usableW - renderW) / 2;
+    const offsetY = margin + (usableH - renderH) / 2;
+
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    pdf.addImage(imgData, "PNG", offsetX, offsetY, renderW, renderH);
+    return pdf.output("blob");
+  };
 
   const downloadDashboardPdf = async () => {
-    if (!dashboardRef.current) return;
     setPdfExporting(true);
     try {
-      const html2canvas = (await import("html2canvas-pro")).default;
-      const { jsPDF } = await import("jspdf");
-
-      const el = dashboardRef.current;
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#F0F2F5",
-        logging: false,
-        windowWidth: el.scrollWidth,
-        windowHeight: el.scrollHeight,
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const imgW = canvas.width;
-      const imgH = canvas.height;
-
-      const pageW = 297;
-      const pageH = 210;
-      const margin = 6;
-      const usableW = pageW - margin * 2;
-      const usableH = pageH - margin * 2;
-      const ratio = Math.min(usableW / imgW, usableH / imgH);
-      const renderW = imgW * ratio;
-      const renderH = imgH * ratio;
-      const offsetX = margin + (usableW - renderW) / 2;
-      const offsetY = margin + (usableH - renderH) / 2;
-
-      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-      pdf.addImage(imgData, "PNG", offsetX, offsetY, renderW, renderH);
-      const date = new Date().toISOString().slice(0, 10);
-      pdf.save(`Parts_Analysis_Dashboard_${date}.pdf`);
+      const blob = await generateDashboardPdfBlob();
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Parts_Analysis_Dashboard_${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error("PDF export failed:", err);
     } finally {
       setPdfExporting(false);
+    }
+  };
+
+  const downloadCombinedZip = async () => {
+    if (!result) return;
+    setZipExporting(true);
+    try {
+      const pdfBlob = await generateDashboardPdfBlob();
+
+      const formData = new FormData();
+      if (result.output_file) formData.append("parts_analysis", result.output_file);
+      if (result.pdsync_file) formData.append("pdsync", result.pdsync_file);
+      if (result.natman_bookings_file) formData.append("natman_bookings", result.natman_bookings_file);
+      if (pdfBlob) formData.append("dashboard_pdf", pdfBlob, "Dashboard.pdf");
+
+      const resp = await fetch(`${API_BASE}/analysis/download-zip`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!resp.ok) throw new Error("Zip download failed");
+
+      const zipBlob = await resp.blob();
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Combined_Analysis_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Zip export failed:", err);
+    } finally {
+      setZipExporting(false);
     }
   };
 
@@ -706,9 +751,9 @@ export default function Dashboard() {
                   {pdfExporting ? <Spinner className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                   {pdfExporting ? "Exporting..." : "Download PDF"}
                 </Button>
-                <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
-                  <Download className="h-4 w-4" />
-                  Download Excel
+                <Button onClick={downloadCombinedZip} disabled={zipExporting} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                  {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                  {zipExporting ? "Building Zip..." : "Download All (Zip)"}
                 </Button>
               </div>
             </div>
@@ -852,9 +897,9 @@ export default function Dashboard() {
                     PDSync
                   </Button>
                 )}
-                <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
-                  <Download className="h-4 w-4" />
-                  Combined Analysis
+                <Button onClick={downloadCombinedZip} disabled={zipExporting} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                  {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                  {zipExporting ? "Building Zip..." : "Download All (Zip)"}
                 </Button>
               </div>
             </div>
