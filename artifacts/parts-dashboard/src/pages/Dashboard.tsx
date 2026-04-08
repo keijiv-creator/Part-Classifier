@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ import {
   SlidersHorizontal,
   CloudUpload,
   X,
+  FileText,
 } from "lucide-react";
 import {
   BarChart,
@@ -388,6 +389,52 @@ export default function Dashboard() {
     window.open(`${API_BASE}/analysis/download?path=${encodeURIComponent(result.pdsync_file)}`, "_blank");
   };
 
+  const dashboardRef = useRef<HTMLDivElement>(null);
+  const [pdfExporting, setPdfExporting] = useState(false);
+
+  const downloadDashboardPdf = async () => {
+    if (!dashboardRef.current) return;
+    setPdfExporting(true);
+    try {
+      const html2canvas = (await import("html2canvas-pro")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const el = dashboardRef.current;
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#F0F2F5",
+        logging: false,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+
+      const pageW = 297;
+      const pageH = 210;
+      const margin = 6;
+      const usableW = pageW - margin * 2;
+      const usableH = pageH - margin * 2;
+      const ratio = Math.min(usableW / imgW, usableH / imgH);
+      const renderW = imgW * ratio;
+      const renderH = imgH * ratio;
+      const offsetX = margin + (usableW - renderW) / 2;
+      const offsetY = margin + (usableH - renderH) / 2;
+
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      pdf.addImage(imgData, "PNG", offsetX, offsetY, renderW, renderH);
+      const date = new Date().toISOString().slice(0, 10);
+      pdf.save(`Parts_Analysis_Dashboard_${date}.pdf`);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+    } finally {
+      setPdfExporting(false);
+    }
+  };
+
   const navItems = [
     { id: "dashboard" as NavPage, label: "Dashboard", icon: LayoutDashboard, disabled: !result },
     { id: "process" as NavPage, label: "Process Files", icon: FolderInput },
@@ -646,7 +693,7 @@ export default function Dashboard() {
         )}
 
         {activePage === "dashboard" && result && (
-          <div className="px-8 py-8">
+          <div ref={dashboardRef} className="px-8 py-8">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-2xl font-bold text-[#1B2A4A]">Dashboard</h1>
@@ -654,10 +701,16 @@ export default function Dashboard() {
                   Analysis completed in {result.elapsed_seconds}s
                 </p>
               </div>
-              <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
-                <Download className="h-4 w-4" />
-                Download Excel
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={downloadDashboardPdf} disabled={pdfExporting} variant="outline" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                  {pdfExporting ? <Spinner className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                  {pdfExporting ? "Exporting..." : "Download PDF"}
+                </Button>
+                <Button onClick={downloadExcel} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                  <Download className="h-4 w-4" />
+                  Download Excel
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
