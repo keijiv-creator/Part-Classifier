@@ -45,6 +45,7 @@ import {
   Loader2,
   Link2,
   Check,
+  Menu,
 } from "lucide-react";
 import {
   BarChart,
@@ -453,16 +454,16 @@ function SourceDataView({
   const totalRows = Object.values(sheets).reduce((sum, s) => sum + s.rows.length, 0);
 
   return (
-    <div className="px-8 py-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="px-4 md:px-8 py-6 md:py-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#1B2A4A]">{title}</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-[#1B2A4A]">{title}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {subtitle} — {sheetNames.length} sheet{sheetNames.length !== 1 ? "s" : ""}, {formatNumber(totalRows)} total rows
           </p>
         </div>
         {downloadAction && (
-          <Button onClick={downloadAction} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+          <Button onClick={downloadAction} size="sm" className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
             <Download className="h-4 w-4" />
             {downloadLabel || "Download"}
           </Button>
@@ -508,7 +509,7 @@ function DiffSummaryCard({ diff }: { diff: DiffData }) {
           <GitCompare className="h-4 w-4 text-[#1B2A4A]" />
           <p className="text-sm font-semibold text-[#1B2A4A]">Changes vs. Previous Run (#{diff.previousRunId})</p>
         </div>
-        <div className="flex gap-6 text-sm">
+        <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
           <div className="flex items-center gap-1.5">
             <Plus className="h-3.5 w-3.5 text-emerald-600" />
             <span className="font-semibold text-emerald-600">{totalAdded}</span>
@@ -567,6 +568,7 @@ export default function Dashboard() {
   const [copyLinkFeedbackId, setCopyLinkFeedbackId] = useState<number | null>(null);
 
   const [copyLinkFailed, setCopyLinkFailed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const copyRunLink = (runId: number) => {
     const url = new URL(window.location.href);
@@ -983,8 +985,11 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen flex bg-[#F0F2F5]">
-      <aside className="w-56 bg-[#1B2A4A] text-white flex flex-col shrink-0">
-        <div className="px-5 py-5 border-b border-white/10">
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+      <aside className={`${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 fixed md:static inset-y-0 left-0 z-50 w-56 bg-[#1B2A4A] text-white flex flex-col shrink-0 transition-transform duration-200`}>
+        <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-white/15 flex items-center justify-center">
               <TrendingUp className="h-4 w-4 text-white" />
@@ -994,12 +999,15 @@ export default function Dashboard() {
               <p className="text-[10px] text-white/50 uppercase tracking-widest">Manager</p>
             </div>
           </div>
+          <button className="md:hidden text-white/60 hover:text-white" onClick={() => setSidebarOpen(false)}>
+            <X className="h-5 w-5" />
+          </button>
         </div>
         <nav className="flex-1 py-3 px-3 space-y-0.5">
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => !item.disabled && setActivePage(item.id)}
+              onClick={() => { if (!item.disabled) { setActivePage(item.id); setSidebarOpen(false); } }}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 activePage === item.id
                   ? "bg-white/15 text-white"
@@ -1015,17 +1023,24 @@ export default function Dashboard() {
         </nav>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto w-full">
+        <div className="md:hidden bg-[#1B2A4A] text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30">
+          <button onClick={() => setSidebarOpen(true)} className="p-1">
+            <Menu className="h-5 w-5" />
+          </button>
+          <p className="text-sm font-semibold">National Pipeline Manager</p>
+          <div className="w-7" />
+        </div>
         {viewingHistoricalRun && (
-          <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <History className="h-4 w-4 text-amber-600" />
-              <span className="text-sm font-medium text-amber-800">
-                Viewing Run #{viewingHistoricalRun.id} — Report Date: {viewingHistoricalRun.reportDate || new Date(viewingHistoricalRun.createdAt).toLocaleDateString()}
+          <div className="bg-amber-50 border-b border-amber-200 px-4 md:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <History className="h-4 w-4 text-amber-600 shrink-0" />
+              <span className="text-sm font-medium text-amber-800 truncate">
+                Run #{viewingHistoricalRun.id} — {viewingHistoricalRun.reportDate || new Date(viewingHistoricalRun.createdAt).toLocaleDateString()}
               </span>
-              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-[10px]">Historical</Badge>
+              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] shrink-0 hidden sm:inline-flex">Historical</Badge>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 variant="outline"
                 size="sm"
@@ -1053,7 +1068,7 @@ export default function Dashboard() {
         )}
 
         {activePage === "process" && (
-          <div className="max-w-4xl mx-auto px-8 py-8">
+          <div className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-8">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-[#1B2A4A]">Process Data</h1>
               <p className="text-sm text-muted-foreground mt-1">
@@ -1317,10 +1332,10 @@ export default function Dashboard() {
         )}
 
         {activePage === "dashboard" && result && (
-          <div ref={dashboardRef} className="px-8 py-8">
-            <div className="flex items-center justify-between mb-6">
+          <div ref={dashboardRef} className="px-4 md:px-8 py-6 md:py-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
               <div>
-                <h1 className="text-2xl font-bold text-[#1B2A4A]">Dashboard</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-[#1B2A4A]">Dashboard</h1>
                 <p className="text-sm text-muted-foreground mt-1">
                   {result.elapsed_seconds ? `Analysis completed in ${result.elapsed_seconds}s` : "Historical run data"}
                   {result.run_id && <span className="ml-2 text-[#1B2A4A] font-medium">(Run #{result.run_id})</span>}
@@ -1328,13 +1343,15 @@ export default function Dashboard() {
               </div>
               {!viewingHistoricalRun && (
                 <div className="flex gap-2">
-                  <Button onClick={downloadDashboardPdf} disabled={pdfExporting} variant="outline" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                  <Button onClick={downloadDashboardPdf} disabled={pdfExporting} variant="outline" size="sm" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
                     {pdfExporting ? <Spinner className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                    {pdfExporting ? "Exporting..." : "Download PDF"}
+                    <span className="hidden sm:inline">{pdfExporting ? "Exporting..." : "Download PDF"}</span>
+                    <span className="sm:hidden">{pdfExporting ? "..." : "PDF"}</span>
                   </Button>
-                  <Button onClick={downloadCombinedZip} disabled={zipExporting} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                  <Button onClick={downloadCombinedZip} disabled={zipExporting} size="sm" className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
                     {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-                    {zipExporting ? "Building Zip..." : "Download All (Zip)"}
+                    <span className="hidden sm:inline">{zipExporting ? "Building Zip..." : "Download All (Zip)"}</span>
+                    <span className="sm:hidden">{zipExporting ? "..." : "Zip"}</span>
                   </Button>
                 </div>
               )}
@@ -1462,29 +1479,31 @@ export default function Dashboard() {
         )}
 
         {activePage === "results" && result && (
-          <div className="px-8 py-8">
-            <div className="flex items-center justify-between mb-6">
+          <div className="px-4 md:px-8 py-6 md:py-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
               <div>
-                <h1 className="text-2xl font-bold text-[#1B2A4A]">Results & Export</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-[#1B2A4A]">Results & Export</h1>
                 <p className="text-sm text-muted-foreground mt-1">Browse and export analysis results</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {result.natman_bookings_file && (
-                  <Button onClick={downloadNatmanBookings} variant="outline" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                  <Button onClick={downloadNatmanBookings} variant="outline" size="sm" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
                     <Download className="h-4 w-4" />
-                    Natman Bookings
+                    <span className="hidden sm:inline">Natman Bookings</span>
+                    <span className="sm:hidden">Natman</span>
                   </Button>
                 )}
                 {result.pdsync_file && (
-                  <Button onClick={downloadPDSync} variant="outline" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                  <Button onClick={downloadPDSync} variant="outline" size="sm" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
                     <Download className="h-4 w-4" />
                     PDSync
                   </Button>
                 )}
                 {!viewingHistoricalRun && (
-                  <Button onClick={downloadCombinedZip} disabled={zipExporting} className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                  <Button onClick={downloadCombinedZip} disabled={zipExporting} size="sm" className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
                     {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-                    {zipExporting ? "Building Zip..." : "Download All (Zip)"}
+                    <span className="hidden sm:inline">{zipExporting ? "Building Zip..." : "Download All (Zip)"}</span>
+                    <span className="sm:hidden">{zipExporting ? "..." : "Zip"}</span>
                   </Button>
                 )}
               </div>
@@ -1627,9 +1646,9 @@ export default function Dashboard() {
         )}
 
         {activePage === "history" && (
-          <div className="px-8 py-8">
+          <div className="px-4 md:px-8 py-6 md:py-8">
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-[#1B2A4A]">Run History</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-[#1B2A4A]">Run History</h1>
               <p className="text-sm text-muted-foreground mt-1">View past runs and compare any two uploads</p>
             </div>
 
@@ -1641,7 +1660,7 @@ export default function Dashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-end gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">
                   <div className="flex-1">
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">Older Run (Base)</p>
                     <select
@@ -1675,7 +1694,7 @@ export default function Dashboard() {
                   <Button
                     onClick={runComparison}
                     disabled={!compareRunA || !compareRunB || compareRunA === compareRunB || comparing}
-                    className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]"
+                    className="gap-2 bg-[#1B2A4A] hover:bg-[#243659] w-full sm:w-auto"
                   >
                     {comparing ? <Spinner className="h-4 w-4" /> : <GitCompare className="h-4 w-4" />}
                     {comparing ? "Comparing..." : "Compare"}
@@ -1779,9 +1798,9 @@ export default function Dashboard() {
                 ) : (
                   <div className="space-y-2">
                     {runs.map((run) => (
-                      <div key={run.id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/30 transition-colors">
-                        <div className="flex items-center gap-4">
-                          <div className="h-8 w-8 rounded-full bg-[#1B2A4A]/10 flex items-center justify-center text-xs font-bold text-[#1B2A4A]">
+                      <div key={run.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg border hover:bg-muted/30 transition-colors gap-3">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                          <div className="h-8 w-8 rounded-full bg-[#1B2A4A]/10 flex items-center justify-center text-xs font-bold text-[#1B2A4A] shrink-0">
                             #{run.id}
                           </div>
                           <div>
@@ -1794,7 +1813,7 @@ export default function Dashboard() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-6 text-xs">
+                        <div className="flex items-center gap-4 sm:gap-6 text-xs flex-wrap">
                           <div className="text-center">
                             <p className="font-semibold text-[#1B2A4A]">{formatNumber(run.totalUniqueParts)}</p>
                             <p className="text-muted-foreground">Parts</p>
@@ -1807,7 +1826,7 @@ export default function Dashboard() {
                             <p className="font-semibold text-[#1B2A4A]">{formatNumber(run.pdInfoCount)}</p>
                             <p className="text-muted-foreground">PD Info</p>
                           </div>
-                          <div className="text-center">
+                          <div className="text-center hidden sm:block">
                             <p className="font-semibold text-[#1B2A4A]">{formatCurrency(run.totalPdPipelineValue)}</p>
                             <p className="text-muted-foreground">Pipeline</p>
                           </div>
@@ -1851,7 +1870,7 @@ export default function Dashboard() {
         )}
 
         {activePage === "source_national" && result && !result.source_data && (
-          <div className="px-8 py-16 text-center">
+          <div className="px-4 md:px-8 py-16 text-center">
             <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <h2 className="text-lg font-semibold text-[#1B2A4A] mb-1">Source Data Not Available</h2>
             <p className="text-sm text-muted-foreground">Source data was not stored for this historical run.</p>
@@ -1876,7 +1895,7 @@ export default function Dashboard() {
         })()}
 
         {activePage === "source_bookings" && result && !result.source_data && (
-          <div className="px-8 py-16 text-center">
+          <div className="px-4 md:px-8 py-16 text-center">
             <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <h2 className="text-lg font-semibold text-[#1B2A4A] mb-1">Source Data Not Available</h2>
             <p className="text-sm text-muted-foreground">Source data was not stored for this historical run.</p>
@@ -1901,9 +1920,9 @@ export default function Dashboard() {
         })()}
 
         {activePage === "settings" && (
-          <div className="max-w-2xl mx-auto px-8 py-8">
+          <div className="max-w-2xl mx-auto px-4 md:px-8 py-6 md:py-8">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-[#1B2A4A]">Settings</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-[#1B2A4A]">Settings</h1>
               <p className="text-sm text-muted-foreground mt-1">Configure pipeline defaults</p>
             </div>
             <Card className="border-0 shadow-sm">
