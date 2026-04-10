@@ -675,7 +675,7 @@ export default function Dashboard() {
     try {
       const resp = await fetch(`${API_BASE}/analysis/runs`, { method: "DELETE" });
       if (!resp.ok) throw new Error("Failed to clear history");
-      setRuns([]);
+      await fetchRuns();
       setCompareRunA(null);
       setCompareRunB(null);
       setComparisonDiff(null);
