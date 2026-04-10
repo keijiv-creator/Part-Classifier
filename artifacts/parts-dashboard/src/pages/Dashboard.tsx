@@ -589,6 +589,7 @@ export default function Dashboard() {
       if (!resp.ok) {
         const err = await resp.json();
         setError(err.error || "Failed to load run");
+        if (!result) setActivePage("process");
         const cleanUrl = new URL(window.location.href);
         if (cleanUrl.searchParams.has("run")) {
           cleanUrl.searchParams.delete("run");
@@ -619,6 +620,7 @@ export default function Dashboard() {
       window.history.replaceState(null, "", url.toString());
     } catch (err: any) {
       setError(err.message || "Failed to load run");
+      if (!result) setActivePage("process");
       const url = new URL(window.location.href);
       if (url.searchParams.has("run")) {
         url.searchParams.delete("run");
