@@ -8,6 +8,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Upload,
   Download,
   FileSpreadsheet,
@@ -46,6 +56,7 @@ import {
   Link2,
   Check,
   Menu,
+  Trash2,
 } from "lucide-react";
 import {
   BarChart,
@@ -569,6 +580,8 @@ export default function Dashboard() {
 
   const [copyLinkFailed, setCopyLinkFailed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
 
   const copyRunLink = (runId: number) => {
     const url = new URL(window.location.href);
@@ -656,6 +669,24 @@ export default function Dashboard() {
         setRuns(data.runs || data);
       }
     } catch {}
+  };
+
+  const clearAllHistory = async () => {
+    setClearingHistory(true);
+    try {
+      const resp = await fetch(`${API_BASE}/analysis/runs`, { method: "DELETE" });
+      if (!resp.ok) throw new Error("Failed to clear history");
+      setRuns([]);
+      setCompareRunA(null);
+      setCompareRunB(null);
+      setComparisonDiff(null);
+      if (viewingHistoricalRun) clearHistoricalRun();
+    } catch (e: any) {
+      setError(e.message || "Failed to clear run history");
+    } finally {
+      setClearingHistory(false);
+      setShowClearDialog(false);
+    }
   };
 
   useEffect(() => {
@@ -1647,10 +1678,51 @@ export default function Dashboard() {
 
         {activePage === "history" && (
           <div className="px-4 md:px-8 py-6 md:py-8">
-            <div className="mb-6">
-              <h1 className="text-xl md:text-2xl font-bold text-[#1B2A4A]">Run History</h1>
-              <p className="text-sm text-muted-foreground mt-1">View past runs and compare any two uploads</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold text-[#1B2A4A]">Run History</h1>
+                <p className="text-sm text-muted-foreground mt-1">View past runs and compare any two uploads</p>
+              </div>
+              {runs.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowClearDialog(true)}
+                  className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Clear All History
+                </Button>
+              )}
             </div>
+
+            <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear all run history?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete all {runs.length} past run{runs.length !== 1 ? "s" : ""} and their data. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={clearingHistory}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={clearAllHistory}
+                    disabled={clearingHistory}
+                    className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                  >
+                    {clearingHistory ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                        Clearing...
+                      </>
+                    ) : (
+                      "Clear All"
+                    )}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             <Card className="border-0 shadow-sm mb-6">
               <CardHeader>
