@@ -566,15 +566,19 @@ export default function Dashboard() {
   const [savedCurrentResult, setSavedCurrentResult] = useState<AnalysisResult | null>(null);
   const [copyLinkFeedbackId, setCopyLinkFeedbackId] = useState<number | null>(null);
 
+  const [copyLinkFailed, setCopyLinkFailed] = useState(false);
+
   const copyRunLink = (runId: number) => {
     const url = new URL(window.location.href);
     url.searchParams.set("run", String(runId));
     navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopyLinkFailed(false);
       setCopyLinkFeedbackId(runId);
       setTimeout(() => setCopyLinkFeedbackId(null), 2000);
     }).catch(() => {
+      setCopyLinkFailed(true);
       setCopyLinkFeedbackId(runId);
-      setTimeout(() => setCopyLinkFeedbackId(null), 2000);
+      setTimeout(() => { setCopyLinkFeedbackId(null); setCopyLinkFailed(false); }, 2000);
     });
   };
 
@@ -1031,7 +1035,7 @@ export default function Dashboard() {
                 ) : (
                   <Link2 className="h-3.5 w-3.5" />
                 )}
-                {copyLinkFeedbackId === viewingHistoricalRun.id ? "Copied!" : "Copy Link"}
+                {copyLinkFeedbackId === viewingHistoricalRun.id ? (copyLinkFailed ? "Failed" : "Copied!") : "Copy Link"}
               </Button>
               <Button
                 variant="outline"
@@ -1817,7 +1821,7 @@ export default function Dashboard() {
                             ) : (
                               <Link2 className="h-3.5 w-3.5" />
                             )}
-                            {copyLinkFeedbackId === run.id ? "Copied!" : "Share"}
+                            {copyLinkFeedbackId === run.id ? (copyLinkFailed ? "Failed" : "Copied!") : "Share"}
                           </Button>
                           <Button
                             variant="outline"
