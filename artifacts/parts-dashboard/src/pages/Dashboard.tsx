@@ -43,6 +43,8 @@ import {
   Eye,
   ArrowLeft,
   Loader2,
+  Link2,
+  Check,
 } from "lucide-react";
 import {
   BarChart,
@@ -562,6 +564,19 @@ export default function Dashboard() {
   const [viewingHistoricalRun, setViewingHistoricalRun] = useState<{ id: number; reportDate: string | null; createdAt: string } | null>(null);
   const [loadingRunId, setLoadingRunId] = useState<number | null>(null);
   const [savedCurrentResult, setSavedCurrentResult] = useState<AnalysisResult | null>(null);
+  const [copyLinkFeedbackId, setCopyLinkFeedbackId] = useState<number | null>(null);
+
+  const copyRunLink = (runId: number) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("run", String(runId));
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopyLinkFeedbackId(runId);
+      setTimeout(() => setCopyLinkFeedbackId(null), 2000);
+    }).catch(() => {
+      setCopyLinkFeedbackId(runId);
+      setTimeout(() => setCopyLinkFeedbackId(null), 2000);
+    });
+  };
 
   const loadHistoricalRun = async (runId: number) => {
     setLoadingRunId(runId);
@@ -570,6 +585,11 @@ export default function Dashboard() {
       if (!resp.ok) {
         const err = await resp.json();
         setError(err.error || "Failed to load run");
+        const cleanUrl = new URL(window.location.href);
+        if (cleanUrl.searchParams.has("run")) {
+          cleanUrl.searchParams.delete("run");
+          window.history.replaceState(null, "", cleanUrl.toString());
+        }
         return;
       }
       const data = await resp.json();
@@ -590,8 +610,16 @@ export default function Dashboard() {
       setActiveTab("summary");
       setActivePage("dashboard");
       setError("");
+      const url = new URL(window.location.href);
+      url.searchParams.set("run", String(data.id));
+      window.history.replaceState(null, "", url.toString());
     } catch (err: any) {
       setError(err.message || "Failed to load run");
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("run")) {
+        url.searchParams.delete("run");
+        window.history.replaceState(null, "", url.toString());
+      }
     } finally {
       setLoadingRunId(null);
     }
@@ -607,6 +635,9 @@ export default function Dashboard() {
       setResult(null);
       setActivePage("process");
     }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("run");
+    window.history.replaceState(null, "", url.toString());
   };
 
   const fetchRuns = async () => {
@@ -621,6 +652,19 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchRuns();
+    const params = new URLSearchParams(window.location.search);
+    const runParam = params.get("run");
+    if (runParam) {
+      const runId = parseInt(runParam, 10);
+      if (!isNaN(runId) && runId > 0) {
+        loadHistoricalRun(runId);
+      } else {
+        setError("Invalid run link — the run ID is not valid.");
+        const url = new URL(window.location.href);
+        url.searchParams.delete("run");
+        window.history.replaceState(null, "", url.toString());
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -975,15 +1019,30 @@ export default function Dashboard() {
               </span>
               <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-[10px]">Historical</Badge>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearHistoricalRun}
-              className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-100"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to current
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => copyRunLink(viewingHistoricalRun.id)}
+                className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-100"
+              >
+                {copyLinkFeedbackId === viewingHistoricalRun.id ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Link2 className="h-3.5 w-3.5" />
+                )}
+                {copyLinkFeedbackId === viewingHistoricalRun.id ? "Copied!" : "Copy Link"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearHistoricalRun}
+                className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-100"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to current
+              </Button>
+            </div>
           </div>
         )}
 
@@ -1750,6 +1809,20 @@ export default function Dashboard() {
                             variant="outline"
                             size="sm"
                             className="gap-1.5 ml-2"
+                            onClick={() => copyRunLink(run.id)}
+                            title="Copy shareable link"
+                          >
+                            {copyLinkFeedbackId === run.id ? (
+                              <Check className="h-3.5 w-3.5 text-emerald-600" />
+                            ) : (
+                              <Link2 className="h-3.5 w-3.5" />
+                            )}
+                            {copyLinkFeedbackId === run.id ? "Copied!" : "Share"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
                             onClick={() => loadHistoricalRun(run.id)}
                             disabled={loadingRunId === run.id || run.hasResultJson === false}
                             title={run.hasResultJson === false ? "Full data not available for this run" : "Load this run's full dashboard"}
