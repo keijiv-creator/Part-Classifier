@@ -343,6 +343,16 @@ router.get("/analysis/runs", async (req: Request, res: Response) => {
   }
 });
 
+router.delete("/analysis/runs", async (req: Request, res: Response) => {
+  try {
+    await db.delete(runPartsTable);
+    await db.delete(runsTable);
+    res.json({ success: true, message: "All runs cleared" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/analysis/runs/:id", async (req: Request, res: Response) => {
   try {
     const runId = Number(req.params.id);
