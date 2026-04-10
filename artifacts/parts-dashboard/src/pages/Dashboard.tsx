@@ -9,7 +9,6 @@ import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -1706,7 +1705,7 @@ export default function Dashboard() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={clearingHistory}>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
+                  <Button
                     onClick={clearAllHistory}
                     disabled={clearingHistory}
                     className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
@@ -1719,7 +1718,7 @@ export default function Dashboard() {
                     ) : (
                       "Clear All"
                     )}
-                  </AlertDialogAction>
+                  </Button>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
