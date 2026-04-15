@@ -347,6 +347,9 @@ function DiffDataTable({
     return [{ key: "_change", label: "Change" }, ...columns];
   }, [columns, showDiff]);
 
+  const escHtml = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
   const badgeStyles: Record<string, string> = {
     NEW:       "background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;",
     CHANGED:   "background:#fef3c7;color:#92400e;border:1px solid #fcd34d;",
@@ -361,7 +364,7 @@ function DiffDataTable({
       let html = `<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;width:100%;">`;
       html += `<thead><tr style="background:#f9fafb;">`;
       for (const h of headers) {
-        html += `<th style="padding:8px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;border-bottom:2px solid #e5e7eb;white-space:nowrap;">${h}</th>`;
+        html += `<th style="padding:8px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;border-bottom:2px solid #e5e7eb;white-space:nowrap;">${escHtml(h)}</th>`;
       }
       html += `</tr></thead><tbody>`;
 
@@ -376,7 +379,7 @@ function DiffDataTable({
           } else {
             const raw = row[col.key];
             const val = col.format ? col.format(raw) : String(raw ?? "");
-            html += `<td style="padding:6px 12px;white-space:nowrap;">${val}</td>`;
+            html += `<td style="padding:6px 12px;white-space:nowrap;">${escHtml(val)}</td>`;
           }
         }
         html += `</tr>`;
@@ -456,7 +459,7 @@ function DiffDataTable({
             title="Copy table as HTML — paste into email"
           >
             {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clipboard className="h-3.5 w-3.5" />}
-            Copy HTML
+            Copy as HTML
           </Button>
           <Button
             variant="outline"
@@ -467,7 +470,7 @@ function DiffDataTable({
             title="Save table as a PNG screenshot"
           >
             {screenshotting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-            Screenshot
+            Save Screenshot
           </Button>
         </div>
       </div>
