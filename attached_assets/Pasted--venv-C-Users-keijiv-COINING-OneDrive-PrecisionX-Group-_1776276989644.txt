@@ -1,0 +1,165 @@
+(.venv) C:\Users\keijiv.COINING\OneDrive - PrecisionX Group\Desktop\local-app>pip install streamlit
+Collecting streamlit
+  Downloading streamlit-1.56.0-py3-none-any.whl.metadata (9.8 kB)
+Collecting altair!=5.4.0,!=5.4.1,<7,>=4.0 (from streamlit)
+  Downloading altair-6.0.0-py3-none-any.whl.metadata (11 kB)
+Collecting blinker<2,>=1.5.0 (from streamlit)
+  Using cached blinker-1.9.0-py3-none-any.whl.metadata (1.6 kB)
+Collecting cachetools<8,>=5.5 (from streamlit)
+  Downloading cachetools-7.0.5-py3-none-any.whl.metadata (5.6 kB)
+Collecting click<9,>=7.0 (from streamlit)
+  Downloading click-8.3.2-py3-none-any.whl.metadata (2.6 kB)
+Collecting gitpython!=3.1.19,<4,>=3.0.7 (from streamlit)
+  Downloading gitpython-3.1.46-py3-none-any.whl.metadata (13 kB)
+Collecting numpy<3,>=1.23 (from streamlit)
+  Downloading numpy-2.4.4-cp312-cp312-win_amd64.whl.metadata (6.6 kB)
+Collecting packaging>=20 (from streamlit)
+  Downloading packaging-26.1-py3-none-any.whl.metadata (3.5 kB)
+Collecting pandas<4,>=1.4.0 (from streamlit)
+  Downloading pandas-3.0.2-cp312-cp312-win_amd64.whl.metadata (19 kB)
+Collecting pillow<13,>=7.1.0 (from streamlit)
+  Downloading pillow-12.2.0-cp312-cp312-win_amd64.whl.metadata (9.0 kB)
+Collecting pydeck<1,>=0.8.0b4 (from streamlit)
+  Downloading pydeck-0.9.1-py2.py3-none-any.whl.metadata (4.1 kB)
+Collecting protobuf<8,>=3.20 (from streamlit)
+  Downloading protobuf-7.34.1-cp310-abi3-win_amd64.whl.metadata (595 bytes)
+Collecting pyarrow>=7.0 (from streamlit)
+  Downloading pyarrow-23.0.1-cp312-cp312-win_amd64.whl.metadata (3.1 kB)
+Collecting requests<3,>=2.27 (from streamlit)
+  Downloading requests-2.33.1-py3-none-any.whl.metadata (4.8 kB)
+Collecting tenacity<10,>=8.1.0 (from streamlit)
+  Downloading tenacity-9.1.4-py3-none-any.whl.metadata (1.2 kB)
+Collecting toml<2,>=0.10.1 (from streamlit)
+  Downloading toml-0.10.2-py2.py3-none-any.whl.metadata (7.1 kB)
+Collecting tornado!=6.5.0,<7,>=6.0.3 (from streamlit)
+  Using cached tornado-6.5.5-cp39-abi3-win_amd64.whl.metadata (2.9 kB)
+Collecting typing-extensions<5,>=4.10.0 (from streamlit)
+  Using cached typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting watchdog<7,>=2.1.5 (from streamlit)
+  Downloading watchdog-6.0.0-py3-none-win_amd64.whl.metadata (44 kB)
+Collecting jinja2 (from altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit)
+  Downloading jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+Collecting jsonschema>=3.0 (from altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit)
+  Downloading jsonschema-4.26.0-py3-none-any.whl.metadata (7.6 kB)
+Collecting narwhals>=1.27.1 (from altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit)
+  Downloading narwhals-2.19.0-py3-none-any.whl.metadata (14 kB)
+Collecting colorama (from click<9,>=7.0->streamlit)
+  Using cached colorama-0.4.6-py2.py3-none-any.whl.metadata (17 kB)
+Collecting gitdb<5,>=4.0.1 (from gitpython!=3.1.19,<4,>=3.0.7->streamlit)
+  Downloading gitdb-4.0.12-py3-none-any.whl.metadata (1.2 kB)
+Collecting python-dateutil>=2.8.2 (from pandas<4,>=1.4.0->streamlit)
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting tzdata (from pandas<4,>=1.4.0->streamlit)
+  Downloading tzdata-2026.1-py2.py3-none-any.whl.metadata (1.4 kB)
+Collecting charset_normalizer<4,>=2 (from requests<3,>=2.27->streamlit)
+  Downloading charset_normalizer-3.4.7-cp312-cp312-win_amd64.whl.metadata (41 kB)
+Collecting idna<4,>=2.5 (from requests<3,>=2.27->streamlit)
+  Downloading idna-3.11-py3-none-any.whl.metadata (8.4 kB)
+Collecting urllib3<3,>=1.26 (from requests<3,>=2.27->streamlit)
+  Downloading urllib3-2.6.3-py3-none-any.whl.metadata (6.9 kB)
+Collecting certifi>=2023.5.7 (from requests<3,>=2.27->streamlit)
+  Downloading certifi-2026.2.25-py3-none-any.whl.metadata (2.5 kB)
+Collecting smmap<6,>=3.0.1 (from gitdb<5,>=4.0.1->gitpython!=3.1.19,<4,>=3.0.7->streamlit)
+  Downloading smmap-5.0.3-py3-none-any.whl.metadata (4.6 kB)
+Collecting MarkupSafe>=2.0 (from jinja2->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit)
+  Downloading markupsafe-3.0.3-cp312-cp312-win_amd64.whl.metadata (2.8 kB)
+Collecting attrs>=22.2.0 (from jsonschema>=3.0->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit)
+  Downloading attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)
+Collecting jsonschema-specifications>=2023.03.6 (from jsonschema>=3.0->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit)
+  Downloading jsonschema_specifications-2025.9.1-py3-none-any.whl.metadata (2.9 kB)
+Collecting referencing>=0.28.4 (from jsonschema>=3.0->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit)
+  Downloading referencing-0.37.0-py3-none-any.whl.metadata (2.8 kB)
+Collecting rpds-py>=0.25.0 (from jsonschema>=3.0->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit)
+  Downloading rpds_py-0.30.0-cp312-cp312-win_amd64.whl.metadata (4.2 kB)
+Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas<4,>=1.4.0->streamlit)
+  Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Downloading streamlit-1.56.0-py3-none-any.whl (9.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 9.1/9.1 MB 9.5 MB/s eta 0:00:00
+Downloading altair-6.0.0-py3-none-any.whl (795 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 795.4/795.4 kB 8.5 MB/s eta 0:00:00
+Using cached blinker-1.9.0-py3-none-any.whl (8.5 kB)
+Downloading cachetools-7.0.5-py3-none-any.whl (13 kB)
+Downloading click-8.3.2-py3-none-any.whl (108 kB)
+Downloading gitpython-3.1.46-py3-none-any.whl (208 kB)
+Downloading numpy-2.4.4-cp312-cp312-win_amd64.whl (12.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.3/12.3 MB 9.5 MB/s eta 0:00:00
+Downloading packaging-26.1-py3-none-any.whl (95 kB)
+Downloading pandas-3.0.2-cp312-cp312-win_amd64.whl (9.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 9.7/9.7 MB 9.5 MB/s eta 0:00:00
+Downloading pillow-12.2.0-cp312-cp312-win_amd64.whl (7.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.1/7.1 MB 9.5 MB/s eta 0:00:00
+Downloading protobuf-7.34.1-cp310-abi3-win_amd64.whl (437 kB)
+Downloading pyarrow-23.0.1-cp312-cp312-win_amd64.whl (27.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 27.6/27.6 MB 9.2 MB/s eta 0:00:00
+Downloading pydeck-0.9.1-py2.py3-none-any.whl (6.9 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.9/6.9 MB 9.4 MB/s eta 0:00:00
+Downloading requests-2.33.1-py3-none-any.whl (64 kB)
+Downloading tenacity-9.1.4-py3-none-any.whl (28 kB)
+Downloading toml-0.10.2-py2.py3-none-any.whl (16 kB)
+Using cached tornado-6.5.5-cp39-abi3-win_amd64.whl (448 kB)
+Using cached typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+Downloading watchdog-6.0.0-py3-none-win_amd64.whl (79 kB)
+Downloading certifi-2026.2.25-py3-none-any.whl (153 kB)
+Downloading charset_normalizer-3.4.7-cp312-cp312-win_amd64.whl (159 kB)
+Downloading gitdb-4.0.12-py3-none-any.whl (62 kB)
+Downloading idna-3.11-py3-none-any.whl (71 kB)
+Downloading jinja2-3.1.6-py3-none-any.whl (134 kB)
+Downloading jsonschema-4.26.0-py3-none-any.whl (90 kB)
+Downloading narwhals-2.19.0-py3-none-any.whl (446 kB)
+Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Downloading urllib3-2.6.3-py3-none-any.whl (131 kB)
+Using cached colorama-0.4.6-py2.py3-none-any.whl (25 kB)
+Downloading tzdata-2026.1-py2.py3-none-any.whl (348 kB)
+Downloading attrs-26.1.0-py3-none-any.whl (67 kB)
+Downloading jsonschema_specifications-2025.9.1-py3-none-any.whl (18 kB)
+Downloading markupsafe-3.0.3-cp312-cp312-win_amd64.whl (15 kB)
+Downloading referencing-0.37.0-py3-none-any.whl (26 kB)
+Downloading rpds_py-0.30.0-cp312-cp312-win_amd64.whl (240 kB)
+Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Downloading smmap-5.0.3-py3-none-any.whl (24 kB)
+Installing collected packages: watchdog, urllib3, tzdata, typing-extensions, tornado, toml, tenacity, smmap, six, rpds-py, pyarrow, protobuf, pillow, packaging, numpy, narwhals, MarkupSafe, idna, colorama, charset_normalizer, certifi, cachetools, blinker, attrs, requests, referencing, python-dateutil, jinja2, gitdb, click, pydeck, pandas, jsonschema-specifications, gitpython, jsonschema, altair, streamlit
+Successfully installed MarkupSafe-3.0.3 altair-6.0.0 attrs-26.1.0 blinker-1.9.0 cachetools-7.0.5 certifi-2026.2.25 charset_normalizer-3.4.7 click-8.3.2 colorama-0.4.6 gitdb-4.0.12 gitpython-3.1.46 idna-3.11 jinja2-3.1.6 jsonschema-4.26.0 jsonschema-specifications-2025.9.1 narwhals-2.19.0 numpy-2.4.4 packaging-26.1 pandas-3.0.2 pillow-12.2.0 protobuf-7.34.1 pyarrow-23.0.1 pydeck-0.9.1 python-dateutil-2.9.0.post0 referencing-0.37.0 requests-2.33.1 rpds-py-0.30.0 six-1.17.0 smmap-5.0.3 streamlit-1.56.0 tenacity-9.1.4 toml-0.10.2 tornado-6.5.5 typing-extensions-4.15.0 tzdata-2026.1 urllib3-2.6.3 watchdog-6.0.0
+
+[notice] A new release of pip is available: 25.0.1 -> 26.0.1
+[notice] To update, run: python.exe -m pip install --upgrade pip
+
+(.venv) C:\Users\keijiv.COINING\OneDrive - PrecisionX Group\Desktop\local-app>streamlit run app.py
+
+      Welcome to Streamlit!
+
+      If you'd like to receive helpful onboarding emails, news, offers, promotions,
+      and the occasional swag, please enter your email address below. Otherwise,
+      leave this field blank.
+
+      Email:
+
+  You can find our privacy policy at https://streamlit.io/privacy-policy
+
+  Summary:
+  - This open source library collects usage statistics.
+  - We cannot see and do not store information contained inside Streamlit apps,
+    such as text, charts, images, etc.
+  - Telemetry data is stored in servers in the United States.
+  - If you'd like to opt out, add the following to %userprofile%/.streamlit/config.toml,
+    creating that file if necessary:
+
+    [browser]
+    gatherUsageStats = false
+
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.100.110:8501
+
+2026-04-15 14:15:45.154 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Users\keijiv.COINING\OneDrive - PrecisionX Group\Desktop\local-app\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+             ^^^^^^
+  File "C:\Users\keijiv.COINING\OneDrive - PrecisionX Group\Desktop\local-app\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 689, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\keijiv.COINING\OneDrive - PrecisionX Group\Desktop\local-app\app.py", line 11, in <module>
+    import plotly.express as px
+ModuleNotFoundError: No module named 'plotly'
