@@ -56,22 +56,6 @@ st.markdown("""
         color: #9ca3af;
         margin-top: 3px;
     }
-    .run-card {
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 6px;
-    }
-    .run-date {
-        font-size: 13px;
-        font-weight: 600;
-        color: #1B2A4A;
-    }
-    .run-meta {
-        font-size: 11px;
-        color: #6b7280;
-    }
     .historical-banner {
         background: #fffbeb;
         border: 1px solid #fcd34d;
@@ -81,6 +65,15 @@ st.markdown("""
         color: #92400e;
         font-size: 14px;
     }
+    .diff-banner {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        padding: 10px 16px;
+        margin-bottom: 16px;
+        font-size: 14px;
+        color: #1e3a8a;
+    }
     .section-header {
         font-size: 11px;
         font-weight: 700;
@@ -89,12 +82,52 @@ st.markdown("""
         color: #9ca3af;
         margin: 16px 0 8px 0;
     }
-    [data-testid="stSidebar"] {
-        background-color: #1B2A4A;
+    .diff-table-wrap {
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 520px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
     }
-    [data-testid="stSidebar"] * {
-        color: white !important;
+    .diff-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
     }
+    .diff-table thead th {
+        position: sticky;
+        top: 0;
+        background: #f9fafb;
+        padding: 8px 12px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #6b7280;
+        border-bottom: 1px solid #e5e7eb;
+        white-space: nowrap;
+    }
+    .diff-table tbody td {
+        padding: 6px 12px;
+        white-space: nowrap;
+        border-top: 1px solid #f3f4f6;
+    }
+    .badge {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+    }
+    .badge-NEW      { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+    .badge-CHANGED  { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+    .badge-REMOVED  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+    .badge-UNCHANGED{ background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
+    .change-detail  { font-size:10px; color:#92400e; margin-top:3px; line-height:1.4; }
+    [data-testid="stSidebar"] { background-color: #1B2A4A; }
+    [data-testid="stSidebar"] * { color: white !important; }
     [data-testid="stSidebar"] .stButton > button {
         background: rgba(255,255,255,0.12);
         color: white !important;
@@ -102,29 +135,14 @@ st.markdown("""
         border-radius: 6px;
         font-size: 13px;
     }
-    [data-testid="stSidebar"] .stButton > button:hover {
-        background: rgba(255,255,255,0.2);
-    }
+    [data-testid="stSidebar"] .stButton > button:hover { background: rgba(255,255,255,0.2); }
     [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] .stSelectbox label,
-    [data-testid="stSidebar"] .stNumberInput label,
-    [data-testid="stSidebar"] .stSlider label,
-    [data-testid="stSidebar"] .stDateInput label,
-    [data-testid="stSidebar"] p {
-        color: rgba(255,255,255,0.75) !important;
-        font-size: 13px !important;
-    }
+    [data-testid="stSidebar"] p { color: rgba(255,255,255,0.75) !important; font-size: 13px !important; }
     [data-testid="stSidebar"] h1,
     [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3 {
-        color: white !important;
-    }
-    div[data-testid="stFileUploader"] label {
-        color: rgba(255,255,255,0.75) !important;
-    }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 14px;
-    }
+    [data-testid="stSidebar"] h3 { color: white !important; }
+    div[data-testid="stFileUploader"] label { color: rgba(255,255,255,0.75) !important; }
+    .stTabs [data-baseweb="tab"] { font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -185,33 +203,177 @@ def save_run(result_data, report_date, cutoff_year):
 
 def run_analysis(national_path, booking_path, cutoff_year, fai_threshold):
     json_out = os.path.join(tempfile.mkdtemp(), "result.json")
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    excel_out_dir = OUTPUT_DIR
-
     cmd = [
         sys.executable, ANALYSIS_SCRIPT,
         "--national-file", national_path,
         "--booking-file", booking_path,
-        "--output-dir", excel_out_dir,
+        "--output-dir", OUTPUT_DIR,
         "--cutoff-year", str(cutoff_year),
         "--fai-threshold", str(fai_threshold),
         "--json-output", json_out,
     ]
-
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=SCRIPT_DIR,
-    )
-
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=SCRIPT_DIR)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + "\n" + proc.stderr)
-
     with open(json_out) as f:
         result = json.load(f)
-
     return result, proc.stdout
+
+
+def compute_diff(current_rows, prev_rows, compare_fields, rev_field):
+    """Compare two lists of part-rows, returning each row annotated with _change_type."""
+    def norm(r):
+        return str(r.get("customer_part_id", "")).strip().upper()
+
+    prev_map = {norm(r): r for r in prev_rows if norm(r)}
+    curr_map = {norm(r): r for r in current_rows if norm(r)}
+
+    rows = []
+    added = removed = changed = unchanged = 0
+    revenue_delta = 0.0
+
+    for key, curr in curr_map.items():
+        curr_rev = float(curr.get(rev_field, 0) or 0)
+        prev = prev_map.get(key)
+        if prev is None:
+            rows.append({**curr, "_change_type": "NEW", "_changes": {}})
+            added += 1
+            revenue_delta += curr_rev
+        else:
+            field_changes = {}
+            for field in compare_fields:
+                old_v = str(prev.get(field, "") or "").strip()
+                new_v = str(curr.get(field, "") or "").strip()
+                if old_v != new_v:
+                    field_changes[field] = (old_v, new_v)
+            if field_changes:
+                rows.append({**curr, "_change_type": "CHANGED", "_changes": field_changes})
+                changed += 1
+                revenue_delta += curr_rev - float(prev.get(rev_field, 0) or 0)
+            else:
+                rows.append({**curr, "_change_type": "UNCHANGED", "_changes": {}})
+                unchanged += 1
+
+    for key, prev in prev_map.items():
+        if key not in curr_map:
+            rows.append({**prev, "_change_type": "REMOVED", "_changes": {}})
+            removed += 1
+            revenue_delta -= float(prev.get(rev_field, 0) or 0)
+
+    order = {"NEW": 0, "CHANGED": 1, "REMOVED": 2, "UNCHANGED": 3}
+    rows.sort(key=lambda r: order.get(r.get("_change_type", "UNCHANGED"), 3))
+
+    return {
+        "rows": rows,
+        "summary": {
+            "added": added,
+            "removed": removed,
+            "changed": changed,
+            "unchanged": unchanged,
+            "revenue_delta": round(revenue_delta, 2),
+        },
+    }
+
+
+def render_diff_banner(diff, prev_label):
+    nd = diff["new_deals"]["summary"]
+    pi = diff["pd_info"]["summary"]
+    total_added   = nd["added"]   + pi["added"]
+    total_removed = nd["removed"] + pi["removed"]
+    total_changed = nd["changed"] + pi["changed"]
+    net_rev = nd["revenue_delta"] + pi["revenue_delta"]
+    sign = "+" if net_rev >= 0 else ""
+    parts = [
+        f"<b>+{total_added}</b> added",
+        f"<b>{total_removed}</b> removed",
+        f"<b>{total_changed}</b> changed",
+        f"Net Δ Revenue: <b>{sign}{fmt_currency(net_rev)}</b>",
+    ]
+    st.markdown(
+        f'<div class="diff-banner">🔄 vs <b>{prev_label}</b> &nbsp;·&nbsp; '
+        + " &nbsp;·&nbsp; ".join(parts)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_diff_table(rows, columns, table_key):
+    """Render an HTML table with coloured change badges and filter buttons."""
+    if not rows:
+        st.info("No data.")
+        return
+
+    all_types = ["ALL", "NEW", "CHANGED", "REMOVED", "UNCHANGED"]
+    counts = {"ALL": len(rows)}
+    for ct in ["NEW", "CHANGED", "REMOVED", "UNCHANGED"]:
+        counts[ct] = sum(1 for r in rows if r.get("_change_type") == ct)
+
+    filter_key = f"diff_filter_{table_key}"
+    if filter_key not in st.session_state:
+        st.session_state[filter_key] = "ALL"
+
+    btn_cols = st.columns(len(all_types))
+    for i, ct in enumerate(all_types):
+        with btn_cols[i]:
+            label = f"{ct} ({counts[ct]})"
+            is_sel = st.session_state[filter_key] == ct
+            if st.button(
+                label,
+                key=f"btn_{table_key}_{ct}",
+                type="primary" if is_sel else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state[filter_key] = ct
+                st.rerun()
+
+    selected = st.session_state[filter_key]
+    filtered = rows if selected == "ALL" else [r for r in rows if r.get("_change_type") == selected]
+
+    row_bg = {"NEW": "#f0fdf4", "CHANGED": "#fffbeb", "REMOVED": "#fef2f2", "UNCHANGED": "#ffffff"}
+    field_labels = {
+        "mapped_status": "Status",
+        "mapped_probability": "Probability",
+        "mapped_med_rev": "Revenue",
+        "calc_label": "Label",
+        "value": "Value",
+        "status": "PD Status",
+        "stage_id": "Stage",
+        "label": "PD Label",
+        "platform_company": "Platform",
+    }
+
+    headers = ["Change"] + [col["label"] for col in columns]
+    html = '<div class="diff-table-wrap"><table class="diff-table"><thead><tr>'
+    html += "".join(f"<th>{h}</th>" for h in headers)
+    html += "</tr></thead><tbody>"
+
+    for row in filtered:
+        ct = row.get("_change_type", "UNCHANGED")
+        bg = row_bg.get(ct, "#ffffff")
+        badge = f'<span class="badge badge-{ct}">{ct}</span>'
+
+        changes = row.get("_changes", {})
+        if ct == "CHANGED" and changes:
+            detail_lines = []
+            for field, (old_v, new_v) in changes.items():
+                fl = field_labels.get(field, field)
+                old_fmt = fmt_currency(old_v) if field in ("mapped_med_rev", "value") else (old_v or "(empty)")
+                new_fmt = fmt_currency(new_v) if field in ("mapped_med_rev", "value") else (new_v or "(empty)")
+                detail_lines.append(f"{fl}: {old_fmt} → {new_fmt}")
+            badge += f'<div class="change-detail">{"<br>".join(detail_lines)}</div>'
+
+        html += f'<tr style="background:{bg};">'
+        html += f'<td style="vertical-align:top;">{badge}</td>'
+        for col in columns:
+            val = row.get(col["key"], "")
+            fmt = col.get("format")
+            cell = fmt(val) if fmt else (str(val) if val is not None else "")
+            html += f"<td>{cell}</td>"
+        html += "</tr>"
+
+    html += "</tbody></table></div>"
+    html += f'<p style="font-size:12px;color:#9ca3af;margin-top:6px;">{len(filtered):,} of {len(rows):,} rows</p>'
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_kpi_row(summary):
@@ -247,17 +409,12 @@ def render_kpi_row(summary):
 
 def render_charts(analytics):
     col_left, col_right = st.columns(2)
-
     with col_left:
         calc = analytics.get("calc_label_distribution", {})
         if calc:
-            fig = px.pie(
-                names=list(calc.keys()),
-                values=list(calc.values()),
-                title="Deal Classification (New Deals)",
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Set2,
-            )
+            fig = px.pie(names=list(calc.keys()), values=list(calc.values()),
+                         title="Deal Classification (New Deals)", hole=0.4,
+                         color_discrete_sequence=px.colors.qualitative.Set2)
             fig.update_layout(margin=dict(t=40, b=0, l=0, r=0), height=300)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -265,13 +422,10 @@ def render_charts(analytics):
         platform_rev = analytics.get("platform_revenue", {})
         if platform_rev:
             items = sorted(platform_rev.items(), key=lambda x: x[1], reverse=True)
-            fig = px.bar(
-                x=[i[0] for i in items],
-                y=[i[1] for i in items],
-                title="Pipeline Value by Platform",
-                labels={"x": "Platform", "y": "Value ($)"},
-                color_discrete_sequence=["#1B2A4A"],
-            )
+            fig = px.bar(x=[i[0] for i in items], y=[i[1] for i in items],
+                         title="Pipeline Value by Platform",
+                         labels={"x": "Platform", "y": "Value ($)"},
+                         color_discrete_sequence=["#1B2A4A"])
             fig.update_layout(margin=dict(t=40, b=0, l=0, r=0), height=300)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -279,13 +433,9 @@ def render_charts(analytics):
     with col_l2:
         status_dist = analytics.get("pd_status_distribution", {})
         if status_dist:
-            fig = px.pie(
-                names=list(status_dist.keys()),
-                values=list(status_dist.values()),
-                title="PD Deal Status Distribution",
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Pastel,
-            )
+            fig = px.pie(names=list(status_dist.keys()), values=list(status_dist.values()),
+                         title="PD Deal Status Distribution", hole=0.4,
+                         color_discrete_sequence=px.colors.qualitative.Pastel)
             fig.update_layout(margin=dict(t=40, b=0, l=0, r=0), height=280)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -293,13 +443,10 @@ def render_charts(analytics):
         industry = analytics.get("industry_distribution", {})
         if industry:
             items = sorted(industry.items(), key=lambda x: x[1], reverse=True)
-            fig = px.bar(
-                x=[i[0] for i in items],
-                y=[i[1] for i in items],
-                title="Industry Distribution (PD Deals)",
-                labels={"x": "Industry", "y": "Count"},
-                color_discrete_sequence=["#7c3aed"],
-            )
+            fig = px.bar(x=[i[0] for i in items], y=[i[1] for i in items],
+                         title="Industry Distribution (PD Deals)",
+                         labels={"x": "Industry", "y": "Count"},
+                         color_discrete_sequence=["#7c3aed"])
             fig.update_layout(margin=dict(t=40, b=0, l=0, r=0), height=280)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -324,7 +471,7 @@ def render_top_customers(analytics):
             st.dataframe(df, use_container_width=True, hide_index=True)
 
 
-def render_results(result, is_historical=False, run_label=None):
+def render_results(result, diff=None, is_historical=False, run_label=None):
     summary = result.get("summary", {})
     analytics = result.get("analytics", {})
     sheets = result.get("sheets", {})
@@ -350,8 +497,36 @@ def render_results(result, is_historical=False, run_label=None):
         if info_parts:
             st.caption(" · ".join(info_parts))
 
+    if diff and not is_historical:
+        render_diff_banner(diff, diff.get("prev_label", "previous run"))
+
+    new_deals_all = sheets.get("new_deals", [])
+    pd_info_all = sheets.get("pd_info", [])
+
+    nd_diff_rows = diff["new_deals"]["rows"] if diff else None
+    pi_diff_rows = diff["pd_info"]["rows"] if diff else None
+
+    nd_total = len(nd_diff_rows) if nd_diff_rows is not None else len(new_deals_all)
+    pi_total = len(pi_diff_rows) if pi_diff_rows is not None else len(pd_info_all)
+
+    nd_changes = (
+        diff["new_deals"]["summary"]["added"]
+        + diff["new_deals"]["summary"]["changed"]
+        + diff["new_deals"]["summary"]["removed"]
+        if diff else 0
+    )
+    pi_changes = (
+        diff["pd_info"]["summary"]["added"]
+        + diff["pd_info"]["summary"]["changed"]
+        + diff["pd_info"]["summary"]["removed"]
+        if diff else 0
+    )
+
+    nd_label = f"🔍 New Deals ({nd_total:,})" + (f" · {nd_changes} changes" if nd_changes else "")
+    pi_label = f"📋 PD Info ({pi_total:,})" + (f" · {pi_changes} changes" if pi_changes else "")
+
     tab_dash, tab_new, tab_pd, tab_parts = st.tabs([
-        "📊 Dashboard", "🔍 New Deals", "📋 PD Info", "📦 All Parts"
+        "📊 Dashboard", nd_label, pi_label, "📦 All Parts"
     ])
 
     with tab_dash:
@@ -384,48 +559,51 @@ def render_results(result, is_historical=False, run_label=None):
                 )
 
     with tab_new:
-        new_deals = sheets.get("new_deals", [])
-        if new_deals:
-            df = pd.DataFrame(new_deals)
-            display_cols = [c for c in [
-                "name", "customer_part_id", "mapped_status", "mapped_probability",
-                "mapped_med_rev", "calc_label", "mapped_pd_p2_time", "first_order_date",
-            ] if c in df.columns]
-            df_disp = df[display_cols].copy() if display_cols else df
-            rename = {
-                "name": "Customer", "customer_part_id": "Part ID",
-                "mapped_status": "Status", "mapped_probability": "Probability",
-                "mapped_med_rev": "Revenue", "calc_label": "Label",
-                "mapped_pd_p2_time": "P2 Time", "first_order_date": "First Order",
-            }
-            df_disp = df_disp.rename(columns={k: v for k, v in rename.items() if k in df_disp.columns})
-            if "Revenue" in df_disp.columns:
-                df_disp["Revenue"] = df_disp["Revenue"].apply(lambda v: fmt_currency(v) if v else "$0")
-            st.markdown(f"**{len(new_deals):,} New Deals**")
-            st.dataframe(df_disp, use_container_width=True, hide_index=True, height=450)
+        nd_cols = [
+            {"key": "name",               "label": "Customer"},
+            {"key": "customer_part_id",   "label": "Part ID"},
+            {"key": "mapped_status",      "label": "Status"},
+            {"key": "mapped_probability", "label": "Probability"},
+            {"key": "mapped_med_rev",     "label": "Revenue",    "format": lambda v: fmt_currency(v) if v else "$0"},
+            {"key": "calc_label",         "label": "Label"},
+            {"key": "mapped_pd_p2_time",  "label": "P2 Time"},
+            {"key": "first_order_date",   "label": "First Order"},
+        ]
+        if nd_diff_rows is not None:
+            render_diff_table(nd_diff_rows, nd_cols, "new_deals")
+        elif new_deals_all:
+            df = pd.DataFrame(new_deals_all)[[
+                c["key"] for c in nd_cols if c["key"] in pd.DataFrame(new_deals_all).columns
+            ]]
+            df = df.rename(columns={c["key"]: c["label"] for c in nd_cols})
+            if "Revenue" in df.columns:
+                df["Revenue"] = df["Revenue"].apply(lambda v: fmt_currency(v) if v else "$0")
+            st.dataframe(df, use_container_width=True, hide_index=True, height=450)
         else:
             st.info("No New Deals data in this run.")
 
     with tab_pd:
-        pd_info = sheets.get("pd_info", [])
-        if pd_info:
-            df = pd.DataFrame(pd_info)
-            display_cols = [c for c in [
-                "pd_id", "org_name", "customer_part_id", "value", "status",
-                "stage_id", "label", "platform_company", "deal_type", "industry",
-            ] if c in df.columns]
-            df_disp = df[display_cols].copy() if display_cols else df
-            rename = {
-                "pd_id": "PD ID", "org_name": "Customer", "customer_part_id": "Part ID",
-                "value": "Value", "status": "Status", "stage_id": "Stage",
-                "label": "Label", "platform_company": "Platform",
-                "deal_type": "Deal Type", "industry": "Industry",
-            }
-            df_disp = df_disp.rename(columns={k: v for k, v in rename.items() if k in df_disp.columns})
-            if "Value" in df_disp.columns:
-                df_disp["Value"] = df_disp["Value"].apply(lambda v: fmt_currency(v) if v else "$0")
-            st.markdown(f"**{len(pd_info):,} PD Info Deals**")
-            st.dataframe(df_disp, use_container_width=True, hide_index=True, height=450)
+        pi_cols = [
+            {"key": "pd_id",            "label": "PD ID"},
+            {"key": "org_name",         "label": "Customer"},
+            {"key": "customer_part_id", "label": "Part ID"},
+            {"key": "value",            "label": "Value",     "format": lambda v: fmt_currency(v) if v else "$0"},
+            {"key": "status",           "label": "Status"},
+            {"key": "stage_id",         "label": "Stage"},
+            {"key": "label",            "label": "Label"},
+            {"key": "platform_company", "label": "Platform"},
+            {"key": "deal_type",        "label": "Deal Type"},
+            {"key": "industry",         "label": "Industry"},
+        ]
+        if pi_diff_rows is not None:
+            render_diff_table(pi_diff_rows, pi_cols, "pd_info")
+        elif pd_info_all:
+            df = pd.DataFrame(pd_info_all)
+            display_cols = [c["key"] for c in pi_cols if c["key"] in df.columns]
+            df = df[display_cols].rename(columns={c["key"]: c["label"] for c in pi_cols})
+            if "Value" in df.columns:
+                df["Value"] = df["Value"].apply(lambda v: fmt_currency(v) if v else "$0")
+            st.dataframe(df, use_container_width=True, hide_index=True, height=450)
         else:
             st.info("No PD Info data in this run.")
 
@@ -442,6 +620,8 @@ def render_results(result, is_historical=False, run_label=None):
 def main():
     if "current_result" not in st.session_state:
         st.session_state.current_result = None
+    if "current_diff" not in st.session_state:
+        st.session_state.current_diff = None
     if "is_historical" not in st.session_state:
         st.session_state.is_historical = False
     if "run_label" not in st.session_state:
@@ -468,9 +648,7 @@ def main():
         fai_threshold = st.slider(
             "FAI Threshold", min_value=0.0, max_value=1.0, value=0.50, step=0.05
         )
-        report_date = st.date_input(
-            "Report Date", value=datetime.today()
-        )
+        report_date = st.date_input("Report Date", value=datetime.today())
 
         run_ready = national_file is not None and booking_file is not None
 
@@ -496,12 +674,43 @@ def main():
                     )
 
                     rdate = str(report_date)
+
+                    all_runs_before = load_runs()
                     save_run(result, rdate, int(cutoff_year))
+                    all_runs_after = load_runs()
+
+                    diff = None
+                    if all_runs_before:
+                        prev_run = all_runs_before[0]
+                        prev_label = prev_run.get("_report_date",
+                                       prev_run.get("_saved_at", "")[:10] or "previous run")
+                        prev_sheets = prev_run.get("sheets", {})
+                        prev_nd = prev_sheets.get("new_deals", [])
+                        prev_pi = prev_sheets.get("pd_info", [])
+
+                        nd_diff = compute_diff(
+                            result.get("sheets", {}).get("new_deals", []),
+                            prev_nd,
+                            ["mapped_status", "mapped_probability", "mapped_med_rev", "calc_label"],
+                            "mapped_med_rev",
+                        )
+                        pi_diff = compute_diff(
+                            result.get("sheets", {}).get("pd_info", []),
+                            prev_pi,
+                            ["value", "status", "stage_id", "label", "platform_company"],
+                            "value",
+                        )
+                        diff = {
+                            "new_deals": nd_diff,
+                            "pd_info": pi_diff,
+                            "prev_label": prev_label,
+                        }
 
                     st.session_state.current_result = result
+                    st.session_state.current_diff = diff
                     st.session_state.is_historical = False
                     st.session_state.run_label = f"Report Date: {rdate}"
-                    st.session_state.runs = load_runs()
+                    st.session_state.runs = all_runs_after
                     st.success("Analysis complete!")
                     st.rerun()
 
@@ -537,6 +746,7 @@ def main():
                     with col_btn:
                         if st.button("Load", key=f"load_run_{i}", use_container_width=True):
                             st.session_state.current_result = run
+                            st.session_state.current_diff = None
                             st.session_state.is_historical = True
                             st.session_state.run_label = rdate
                             st.rerun()
@@ -558,6 +768,7 @@ def main():
                                 pass
                         st.session_state.runs = []
                         st.session_state.current_result = None
+                        st.session_state.current_diff = None
                         st.session_state.is_historical = False
                         st.session_state._confirm_clear = False
                         st.rerun()
@@ -574,6 +785,7 @@ def main():
             with col_back:
                 if st.button("← New Run"):
                     st.session_state.current_result = None
+                    st.session_state.current_diff = None
                     st.session_state.is_historical = False
                     st.rerun()
         else:
@@ -581,6 +793,7 @@ def main():
 
         render_results(
             st.session_state.current_result,
+            diff=st.session_state.current_diff,
             is_historical=st.session_state.is_historical,
             run_label=st.session_state.run_label,
         )
@@ -599,6 +812,9 @@ def main():
 
         Results will appear here with KPI cards, charts, and scrollable data tables.
         Each run is automatically saved to the `runs/` folder for future reference.
+        On your **second and subsequent runs**, the New Deals and PD Info tables will
+        show colour-coded change badges (NEW / CHANGED / REMOVED / UNCHANGED) with
+        filters, compared against your most recent previous run.
 
         ---
         **What this does:**
