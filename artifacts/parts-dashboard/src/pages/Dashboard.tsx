@@ -56,7 +56,10 @@ import {
   Check,
   Menu,
   Trash2,
+  Clipboard,
+  Camera,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   BarChart,
   Bar,
@@ -298,16 +301,21 @@ function DiffDataTable({
   columns,
   maxRows = 100,
   showDiff = false,
+  tableLabel = "Table",
 }: {
   data: any[];
   columns: { key: string; label: string; format?: (v: any) => string }[];
   maxRows?: number;
   showDiff?: boolean;
+  tableLabel?: string;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [changeFilter, setChangeFilter] = useState<string>("ALL");
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [screenshotting, setScreenshotting] = useState(false);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
   const pageSize = maxRows;
 
   const filtered = useMemo(() => {
@@ -339,6 +347,75 @@ function DiffDataTable({
     return [{ key: "_change", label: "Change" }, ...columns];
   }, [columns, showDiff]);
 
+  const badgeStyles: Record<string, string> = {
+    NEW:       "background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;",
+    CHANGED:   "background:#fef3c7;color:#92400e;border:1px solid #fcd34d;",
+    REMOVED:   "background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;",
+    UNCHANGED: "background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;",
+  };
+
+  const copyHtml = async () => {
+    setCopying(true);
+    try {
+      const headers = allColumns.map((c) => c.label);
+      let html = `<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;width:100%;">`;
+      html += `<thead><tr style="background:#f9fafb;">`;
+      for (const h of headers) {
+        html += `<th style="padding:8px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;border-bottom:2px solid #e5e7eb;white-space:nowrap;">${h}</th>`;
+      }
+      html += `</tr></thead><tbody>`;
+
+      for (const row of filtered) {
+        const ct: string = row.changeType || "UNCHANGED";
+        const rowBg = ct === "NEW" ? "#f0fdf4" : ct === "REMOVED" ? "#fef2f2" : ct === "CHANGED" ? "#fffbeb" : "#ffffff";
+        html += `<tr style="background:${rowBg};border-top:1px solid #f3f4f6;">`;
+        for (const col of allColumns) {
+          if (col.key === "_change") {
+            const bs = badgeStyles[ct] || badgeStyles.UNCHANGED;
+            html += `<td style="padding:6px 12px;white-space:nowrap;"><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;${bs}">${ct}</span></td>`;
+          } else {
+            const raw = row[col.key];
+            const val = col.format ? col.format(raw) : String(raw ?? "");
+            html += `<td style="padding:6px 12px;white-space:nowrap;">${val}</td>`;
+          }
+        }
+        html += `</tr>`;
+      }
+      html += `</tbody></table>`;
+
+      await navigator.clipboard.writeText(html);
+      toast.success("Table HTML copied — paste into your email");
+    } catch {
+      toast.error("Failed to copy — please try again");
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  const saveScreenshot = async () => {
+    if (!tableWrapRef.current) return;
+    setScreenshotting(true);
+    try {
+      const html2canvas = (await import("html2canvas-pro")).default;
+      const canvas = await html2canvas(tableWrapRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      });
+      const date = new Date().toISOString().slice(0, 10);
+      const filename = `Parts_Analysis_${tableLabel}_${date}.png`;
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = filename;
+      a.click();
+      toast.success(`Screenshot saved as ${filename}`);
+    } catch {
+      toast.error("Screenshot failed — please try again");
+    } finally {
+      setScreenshotting(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -369,8 +446,32 @@ function DiffDataTable({
         <span className="text-sm text-muted-foreground">
           {formatNumber(filtered.length)} rows
         </span>
+        <div className="flex items-center gap-1 ml-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={copying}
+            onClick={copyHtml}
+            className="gap-1.5 h-8 px-2.5 text-xs border-[#1B2A4A]/30 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"
+            title="Copy table as HTML — paste into email"
+          >
+            {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clipboard className="h-3.5 w-3.5" />}
+            Copy HTML
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={screenshotting}
+            onClick={saveScreenshot}
+            className="gap-1.5 h-8 px-2.5 text-xs border-[#1B2A4A]/30 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"
+            title="Save table as a PNG screenshot"
+          >
+            {screenshotting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+            Screenshot
+          </Button>
+        </div>
       </div>
-      <div className="overflow-auto max-h-[500px] border rounded-lg">
+      <div ref={tableWrapRef} className="overflow-auto max-h-[500px] border rounded-lg">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 sticky top-0">
             <tr>
@@ -1633,6 +1734,7 @@ export default function Dashboard() {
                     <DiffDataTable
                       data={newDealsWithDiff}
                       showDiff={!!diff}
+                      tableLabel="New_Deals"
                       columns={[
                         { key: "name", label: "Customer" },
                         { key: "customer_part_id", label: "Part ID" },
@@ -1654,6 +1756,7 @@ export default function Dashboard() {
                     <DiffDataTable
                       data={pdInfoWithDiff}
                       showDiff={!!diff}
+                      tableLabel="PD_Info"
                       columns={[
                         { key: "pd_id", label: "PD ID" },
                         { key: "customer_part_id", label: "Part ID" },
