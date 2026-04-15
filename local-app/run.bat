@@ -14,7 +14,12 @@ if not exist ".venv" (
 )
 
 call .venv\Scripts\activate.bat
-pip install -q -r requirements.txt
+
+if not exist ".venv\.requirements_installed" (
+    echo Installing requirements (first run only)...
+    pip install -q -r requirements.txt
+    type nul > .venv\.requirements_installed
+)
 
 echo Starting National Pipeline Manager...
 echo Open http://localhost:8501 in your browser

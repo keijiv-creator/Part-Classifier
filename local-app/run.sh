@@ -20,9 +20,15 @@ if [ ! -d ".venv" ]; then
     $PYTHON -m venv .venv
 fi
 
-# Activate and install requirements
 source .venv/bin/activate
-pip install -q -r requirements.txt
+
+# Install requirements only once (skip if already installed)
+MARKER=".venv/.requirements_installed"
+if [ ! -f "$MARKER" ]; then
+    echo "Installing requirements (first run only)..."
+    pip install -q -r requirements.txt
+    touch "$MARKER"
+fi
 
 # Launch Streamlit
 echo "Starting National Pipeline Manager..."

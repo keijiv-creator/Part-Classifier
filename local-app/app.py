@@ -12,9 +12,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 RUNS_DIR = os.path.join(SCRIPT_DIR, "runs")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
-ANALYSIS_SCRIPT = os.path.join(SCRIPT_DIR, "combine_parts_analysis.py")
+ANALYSIS_SCRIPT = os.path.join(DATA_DIR, "combine_parts_analysis.py")
 
 os.makedirs(RUNS_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
