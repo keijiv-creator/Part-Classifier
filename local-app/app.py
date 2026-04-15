@@ -330,6 +330,17 @@ def render_diff_table(rows, columns, table_key):
     filtered = rows if selected == "ALL" else [r for r in rows if r.get("_change_type") == selected]
 
     row_bg = {"NEW": "#f0fdf4", "CHANGED": "#fffbeb", "REMOVED": "#fef2f2", "UNCHANGED": "#ffffff"}
+    numeric_fields = {"mapped_med_rev", "value"}
+
+    def fmt_diff_val(field, raw):
+        """Safely format a diff before/after value (raw is already a string)."""
+        if field in numeric_fields:
+            try:
+                return fmt_currency(float(raw)) if raw else "(empty)"
+            except (ValueError, TypeError):
+                return raw or "(empty)"
+        return raw or "(empty)"
+
     field_labels = {
         "mapped_status": "Status",
         "mapped_probability": "Probability",
@@ -357,9 +368,7 @@ def render_diff_table(rows, columns, table_key):
             detail_lines = []
             for field, (old_v, new_v) in changes.items():
                 fl = field_labels.get(field, field)
-                old_fmt = fmt_currency(old_v) if field in ("mapped_med_rev", "value") else (old_v or "(empty)")
-                new_fmt = fmt_currency(new_v) if field in ("mapped_med_rev", "value") else (new_v or "(empty)")
-                detail_lines.append(f"{fl}: {old_fmt} → {new_fmt}")
+                detail_lines.append(f"{fl}: {fmt_diff_val(field, old_v)} → {fmt_diff_val(field, new_v)}")
             badge += f'<div class="change-detail">{"<br>".join(detail_lines)}</div>'
 
         html += f'<tr style="background:{bg};">'
