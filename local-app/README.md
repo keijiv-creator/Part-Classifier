@@ -57,6 +57,12 @@ Use **🗑 Clear All History** to delete all saved runs.
 | `run.sh` | Mac/Linux launcher |
 | `run.bat` | Windows launcher |
 
+> **Keeping Pipedrive data fresh:** The app warns you if either `pd_cache.json` or
+> `pd_deals_export.json` is missing or has not been updated in the last **7 days**.
+> When these files are absent, Pipedrive deal matching is skipped and the `PD_Info`
+> columns in the output will be empty.  Regenerate both files using the Pipedrive
+> refresh script (see the main project README for setup steps) to clear the warning.
+
 ## Distributing
 
 Zip the entire `local-app/` folder and share it.

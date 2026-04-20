@@ -17,6 +17,12 @@ RUNS_DIR = os.path.join(SCRIPT_DIR, "runs")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
 ANALYSIS_SCRIPT = os.path.join(DATA_DIR, "combine_parts_analysis.py")
 
+PD_FILES = {
+    "pd_cache.json": "Pipedrive deal cache (matched deal metadata)",
+    "pd_deals_export.json": "Pipedrive deals export (full deal list)",
+}
+PD_STALE_DAYS = 7
+
 os.makedirs(RUNS_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -145,6 +151,79 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
+
+
+def check_pipedrive_files():
+    """Return status info for each Pipedrive data file."""
+    now = datetime.now().timestamp()
+    results = {}
+    for fname, description in PD_FILES.items():
+        fpath = os.path.join(DATA_DIR, fname)
+        if not os.path.exists(fpath):
+            results[fname] = {"present": False, "description": description, "mtime": None, "age_days": None, "stale": False}
+        else:
+            mtime = os.path.getmtime(fpath)
+            age_days = (now - mtime) / 86400
+            results[fname] = {
+                "present": True,
+                "description": description,
+                "mtime": datetime.fromtimestamp(mtime),
+                "age_days": age_days,
+                "stale": age_days > PD_STALE_DAYS,
+            }
+    return results
+
+
+def render_pd_file_warnings(pd_status, location="main"):
+    """Render warnings for missing or stale Pipedrive data files.
+
+    location='sidebar' uses compact single-line format;
+    location='main' uses a fuller banner.
+    """
+    missing = [f for f, s in pd_status.items() if not s["present"]]
+    stale = [f for f, s in pd_status.items() if s["present"] and s["stale"]]
+
+    if not missing and not stale:
+        return
+
+    if location == "sidebar":
+        if missing:
+            names = " and ".join(f"`{f}`" for f in missing)
+            st.warning(
+                f"⚠️ {names} {'is' if len(missing) == 1 else 'are'} missing — "
+                "Pipedrive enrichment will be skipped. See README for setup.",
+                icon=None,
+            )
+        for fname in stale:
+            s = pd_status[fname]
+            age = int(s["age_days"])
+            mtime_str = s["mtime"].strftime("%Y-%m-%d")
+            st.warning(
+                f"⚠️ `{fname}` is {age}d old (last updated {mtime_str}). "
+                "PD data may be out of date.",
+                icon=None,
+            )
+    else:
+        if missing:
+            names_list = "\n".join(f"- `{f}` — {pd_status[f]['description']}" for f in missing)
+            st.warning(
+                f"**Pipedrive data files missing**\n\n"
+                f"The following file{'s are' if len(missing) > 1 else ' is'} absent from `local-app/data/`:\n\n"
+                f"{names_list}\n\n"
+                "Deal matching against Pipedrive will be **skipped**, leaving the "
+                "`PD_Info` columns blank in the output. "
+                "See the **README** for instructions on generating these files.",
+            )
+        for fname in stale:
+            s = pd_status[fname]
+            age = int(s["age_days"])
+            mtime_str = s["mtime"].strftime("%Y-%m-%d %H:%M")
+            st.warning(
+                f"**`{fname}` may be out of date** — last modified {mtime_str} "
+                f"({age} day{'s' if age != 1 else ''} ago). "
+                f"PD enrichment will use stale data. "
+                "See the **README** for instructions on refreshing Pipedrive data.",
+            )
 
 
 def fmt_currency(v):
@@ -638,9 +717,13 @@ def main():
     if "runs" not in st.session_state:
         st.session_state.runs = load_runs()
 
+    pd_status = check_pipedrive_files()
+
     with st.sidebar:
         st.markdown("## 📊 National Pipeline\n**Manager** — Local")
         st.markdown("---")
+
+        render_pd_file_warnings(pd_status, location="sidebar")
 
         st.markdown('<div class="section-header">New Analysis</div>', unsafe_allow_html=True)
 
@@ -809,6 +892,9 @@ def main():
     else:
         st.title("📊 National Pipeline Manager")
         st.markdown("#### Local Analysis Tool")
+
+        render_pd_file_warnings(pd_status, location="main")
+
         st.markdown("""
         Upload your source files in the sidebar to get started.
 
