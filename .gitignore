@@ -44,6 +44,28 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+local-app/.venv/
+local-app/__pycache__/
+local-app/**/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.python-version
+
+# Local app data and generated output (large / sensitive files)
+local-app/data/*.json
+local-app/output/
+local-app/runs/
+
+# pnpm debug logs
+pnpm-debug.log*
+
 # Replit
 .cache/
 .local/

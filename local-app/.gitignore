@@ -1,0 +1,19 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Byte-compiled files
+__pycache__/
+*.pyc
+*.pyo
+
+# Data files (potentially large or sensitive)
+data/*.json
+output/
+runs/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
