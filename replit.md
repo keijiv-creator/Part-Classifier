@@ -99,11 +99,20 @@ Located at `scripts/src/combine_parts_analysis.py`. Accepts two raw xlsx files d
 
 ## Key Commands
 
+- `pnpm dev` — start both servers together (API on PORT=3001, dashboard on PORT=3000); logs appear in the "Start application" workflow console with `[api]` / `[dash]` prefixes
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
+- `pnpm --filter @workspace/api-server run dev` — run API server in isolation (PORT and BASE_PATH injected by Replit artifact workflow)
+- `pnpm --filter @workspace/parts-dashboard run dev` — run dashboard in isolation (PORT and BASE_PATH injected by Replit artifact workflow)
 - `python3 scripts/src/combine_parts_analysis.py --national-file <file> --booking-file <file> --output-dir <dir>` — run analysis directly
+
+### Dev ports (consolidated workflow)
+When running via `pnpm dev` (root "Start application" workflow), ports are hardcoded:
+- API server → `PORT=3001`
+- Dashboard → `PORT=3000`, `BASE_PATH=/`
+
+Individual artifact workflows use Replit-assigned ports and should not be run simultaneously with the consolidated workflow to avoid conflicts.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
