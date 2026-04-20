@@ -279,6 +279,46 @@ Option 3 — build a persistent export file:
 
 To create a reusable `pd_deals_export.json`, you can add a short script (or modify `local-app/data/combine_parts_analysis.py`) to call `fetch_deal_details()` and write the result to disk with `json.dump`. Refer to that function for the exact data structure expected.
 
+---
+
+### Refreshing Pipedrive data automatically
+
+`local-app/refresh_pd_data.py` is a dedicated script that rebuilds **both** `pd_cache.json` and `pd_deals_export.json` in one step. It:
+
+1. Fetches every deal from Pipedrive (all statuses, paginated).
+2. Builds a fresh `pd_cache.json` from any deal that has the **Customer Part ID** custom field set.
+3. Fetches full deal details for every cached deal ID and builds `pd_deals_export.json`.
+4. Writes both files directly to `local-app/data/`.
+
+**Mac / Linux:**
+```bash
+export PIPEDRIVE_API_KEY=your_token_here
+python local-app/refresh_pd_data.py
+```
+
+**Windows (Command Prompt):**
+```bat
+set PIPEDRIVE_API_KEY=your_token_here
+python local-app\refresh_pd_data.py
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:PIPEDRIVE_API_KEY = "your_token_here"
+python local-app\refresh_pd_data.py
+```
+
+You can also run it from inside `local-app/`:
+
+```bash
+cd local-app
+PIPEDRIVE_API_KEY=your_token_here python refresh_pd_data.py
+```
+
+The script prints progress as it runs and reports the final file sizes when done. Run it whenever Pipedrive deal data has changed and you want the local app to reflect the latest state without performing a full analysis run.
+
+---
+
 ### How to use
 
 1. Upload files in the left sidebar:
