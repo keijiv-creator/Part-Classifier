@@ -635,16 +635,48 @@ def render_results(result, diff=None, is_historical=False, run_label=None):
         with col_d:
             st.metric("Won Deal Value", fmt_currency(summary.get("won_deals_value")))
 
-        if not is_historical and output_file and os.path.exists(output_file):
-            st.markdown("---")
-            with open(output_file, "rb") as f:
-                st.download_button(
-                    label="⬇️ Download Parts Analysis Excel",
-                    data=f.read(),
-                    file_name=os.path.basename(output_file),
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                )
+        if not is_historical:
+            natman_file = result.get("natman_bookings_file")
+            pdsync_file = result.get("pdsync_file")
+            has_any = (
+                (output_file and os.path.exists(output_file))
+                or (natman_file and os.path.exists(natman_file))
+                or (pdsync_file and os.path.exists(pdsync_file))
+            )
+            if has_any:
+                st.markdown("---")
+                dl_col1, dl_col2, dl_col3 = st.columns(3)
+                if output_file and os.path.exists(output_file):
+                    with dl_col1:
+                        with open(output_file, "rb") as f:
+                            st.download_button(
+                                label="⬇️ Parts Analysis",
+                                data=f.read(),
+                                file_name=os.path.basename(output_file),
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                type="primary",
+                                use_container_width=True,
+                            )
+                if natman_file and os.path.exists(natman_file):
+                    with dl_col2:
+                        with open(natman_file, "rb") as f:
+                            st.download_button(
+                                label="⬇️ Natman Bookings",
+                                data=f.read(),
+                                file_name=os.path.basename(natman_file),
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True,
+                            )
+                if pdsync_file and os.path.exists(pdsync_file):
+                    with dl_col3:
+                        with open(pdsync_file, "rb") as f:
+                            st.download_button(
+                                label="⬇️ National PDSync",
+                                data=f.read(),
+                                file_name=os.path.basename(pdsync_file),
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True,
+                            )
 
     with tab_new:
         nd_cols = [

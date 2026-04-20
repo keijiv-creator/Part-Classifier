@@ -310,19 +310,34 @@ def generate_natman_bookings(dev_booking_path, output_dir):
             except (ValueError, TypeError):
                 continue
 
-        if cust_part not in landmark_data or order_date < landmark_data[cust_part]['date']:
+        if cust_part not in landmark_data:
             landmark_data[cust_part] = {
                 'date': order_date,
                 'nat_part': r[nat_part_idx],
                 'order_no': r[so_no_idx],
                 'quote_no': r[quote_no_idx],
+                'last_date': order_date,
+                'last_order_no': r[so_no_idx],
+                'last_quote_no': r[quote_no_idx],
             }
+        else:
+            entry = landmark_data[cust_part]
+            if order_date < entry['date']:
+                entry['date'] = order_date
+                entry['nat_part'] = r[nat_part_idx]
+                entry['order_no'] = r[so_no_idx]
+                entry['quote_no'] = r[quote_no_idx]
+            if order_date > entry['last_date']:
+                entry['last_date'] = order_date
+                entry['last_order_no'] = r[so_no_idx]
+                entry['last_quote_no'] = r[quote_no_idx]
 
     landmark_rows = []
     for cust_part, info in sorted(landmark_data.items()):
         landmark_rows.append([
-            info['nat_part'], cust_part, info['date'],
-            info['order_no'], info['quote_no']
+            info['nat_part'], cust_part,
+            info['date'], info['order_no'], info['quote_no'],
+            info['last_date'], info['last_order_no'], info['last_quote_no'],
         ])
 
     print(f"  Generated: MAIN={len(main_rows):,}, UNIQUE={len(unique_rows):,}, "
@@ -355,8 +370,11 @@ def generate_natman_bookings(dev_booking_path, output_dir):
     write_sheet_fast(ws_totals, totals_headers, totals_rows)
 
     ws_landmark = wb_out.create_sheet('LANDMARK')
-    landmark_headers = ['NAT PART ID', 'CUST PART ID', 'FIRST ORDER DATE',
-                        'FIRST ORDER NO', 'QUOTE NO']
+    landmark_headers = [
+        'NAT PART ID', 'CUST PART ID',
+        'FIRST ORDER DATE', 'FIRST ORDER NO', 'FIRST ORDER QUOTE NO',
+        'LAST ORDER DATE', 'LAST ORDER NUMBER', 'LAST ORDER QUOTE NO',
+    ]
     write_sheet_fast(ws_landmark, landmark_headers, landmark_rows)
 
     wb_out.save(natman_path)
