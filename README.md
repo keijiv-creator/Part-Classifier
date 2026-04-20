@@ -86,13 +86,19 @@ pnpm --filter @workspace/db run push
 
 ### 4. Start both servers
 
-In two separate terminals:
+Start the API server and web dashboard together with a single command:
 
 ```bash
-# Terminal 1 — API server
+pnpm dev
+```
+
+This launches both processes in parallel with colour-coded output. To start each server individually instead:
+
+```bash
+# API server only
 pnpm --filter @workspace/api-server run dev
 
-# Terminal 2 — Web dashboard
+# Web dashboard only
 pnpm --filter @workspace/parts-dashboard run dev
 ```
 
