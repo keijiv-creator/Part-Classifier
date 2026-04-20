@@ -1475,20 +1475,43 @@ export default function Dashboard() {
                   {result.run_id && <span className="ml-2 text-[#1B2A4A] font-medium">(Run #{result.run_id})</span>}
                 </p>
               </div>
-              {!viewingHistoricalRun && (
-                <div className="flex gap-2">
-                  <Button onClick={downloadDashboardPdf} disabled={pdfExporting} variant="outline" size="sm" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
-                    {pdfExporting ? <Spinner className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                    <span className="hidden sm:inline">{pdfExporting ? "Exporting..." : "Download PDF"}</span>
-                    <span className="sm:hidden">{pdfExporting ? "..." : "PDF"}</span>
+              <div className="flex gap-2 flex-wrap">
+                {result.output_file && (
+                  <Button onClick={downloadExcel} variant="outline" size="sm" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                    <Download className="h-4 w-4" />
+                    <span className="hidden sm:inline">Parts Analysis</span>
+                    <span className="sm:hidden">Parts</span>
                   </Button>
-                  <Button onClick={downloadCombinedZip} disabled={zipExporting} size="sm" className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
-                    {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-                    <span className="hidden sm:inline">{zipExporting ? "Building Zip..." : "Download All (Zip)"}</span>
-                    <span className="sm:hidden">{zipExporting ? "..." : "Zip"}</span>
+                )}
+                {result.natman_bookings_file && (
+                  <Button onClick={downloadNatmanBookings} variant="outline" size="sm" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                    <Download className="h-4 w-4" />
+                    <span className="hidden sm:inline">Natman Bookings</span>
+                    <span className="sm:hidden">Natman</span>
                   </Button>
-                </div>
-              )}
+                )}
+                {result.pdsync_file && (
+                  <Button onClick={downloadPDSync} variant="outline" size="sm" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                    <Download className="h-4 w-4" />
+                    <span className="hidden sm:inline">National PDSync</span>
+                    <span className="sm:hidden">PDSync</span>
+                  </Button>
+                )}
+                {!viewingHistoricalRun && (
+                  <>
+                    <Button onClick={downloadDashboardPdf} disabled={pdfExporting} variant="outline" size="sm" className="gap-2 border-[#1B2A4A]/30 text-[#1B2A4A]">
+                      {pdfExporting ? <Spinner className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                      <span className="hidden sm:inline">{pdfExporting ? "Exporting..." : "Download PDF"}</span>
+                      <span className="sm:hidden">{pdfExporting ? "..." : "PDF"}</span>
+                    </Button>
+                    <Button onClick={downloadCombinedZip} disabled={zipExporting} size="sm" className="gap-2 bg-[#1B2A4A] hover:bg-[#243659]">
+                      {zipExporting ? <Spinner className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                      <span className="hidden sm:inline">{zipExporting ? "Building Zip..." : "Download All (Zip)"}</span>
+                      <span className="sm:hidden">{zipExporting ? "..." : "Zip"}</span>
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
 
             {diff && <DiffSummaryCard diff={diff} />}
