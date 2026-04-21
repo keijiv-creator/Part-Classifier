@@ -346,15 +346,34 @@ def generate_natman_bookings(dev_booking_path, output_dir):
     natman_path = os.path.join(output_dir, f'Natman_Bookings_{datetime.now().strftime("%Y%m%d")}.xlsx')
     wb_out = openpyxl.Workbook()
 
-    def write_sheet_fast(ws, headers, data_rows):
+    def write_sheet_fast(ws, headers, data_rows, formats=None):
         write_header(ws, headers)
         for row_data in data_rows:
             cleaned = [clean_val(v) for v in row_data]
             ws.append(cleaned)
+            if formats:
+                row_idx = ws.max_row
+                for c, fmt in enumerate(formats, 1):
+                    if fmt:
+                        ws.cell(row=row_idx, column=c).number_format = fmt
+
+    # BOOKING_HEADERS_DISPLAY column order:
+    # 1:Database, 2:Order Date, 3:Sales Order No, 4:So Status, 5:Quote No,
+    # 6:Customer ID, 7:Customer Name, 8:SO line No, 9:National Part ID,
+    # 10:Customer Part No, 11:Part Description, 12:Order Qty, 13:Line Status,
+    # 14:Unit Price, 15:Total Amount Ordered, 16:Total Shipped Qty,
+    # 17:Ful Fill Qty, 18:Pending Qty, 19:Pending Amount
+    main_formats = [
+        None, 'MM/DD/YYYY', None, None, None,
+        None, None, None, None,
+        None, None, '#,##0', None,
+        '$#,##0.00', '$#,##0.00', '#,##0',
+        '#,##0', '#,##0', '$#,##0.00',
+    ]
 
     ws_main = wb_out.active
     ws_main.title = 'MAIN'
-    write_sheet_fast(ws_main, BOOKING_HEADERS_DISPLAY, main_rows)
+    write_sheet_fast(ws_main, BOOKING_HEADERS_DISPLAY, main_rows, formats=main_formats)
 
     ws_unique = wb_out.create_sheet('UNIQUE')
     unique_headers = ['Database', 'Line Status', 'Order Date', 'Sales Order No',
@@ -367,7 +386,13 @@ def generate_natman_bookings(dev_booking_path, output_dir):
                       'NATIONAL PART ID', 'Customer Part No', 'Order Qty',
                       'Total Amount Ordered', 'Total Shipped Qty', 'Ful Fill Qty',
                       'Pending Qty', 'Pending Amount']
-    write_sheet_fast(ws_totals, totals_headers, totals_rows)
+    # 1:Order Date, 2:SO No, 3:Quote No, 4:Cust Name, 5:NAT PART ID, 6:Cust Part No,
+    # 7:Order Qty, 8:Total Amount, 9:Shipped Qty, 10:FulFill Qty, 11:Pending Qty, 12:Pending Amt
+    totals_formats = [
+        'MM/DD/YYYY', None, None, None, None, None,
+        '#,##0', '$#,##0.00', '#,##0', '#,##0', '#,##0', '$#,##0.00',
+    ]
+    write_sheet_fast(ws_totals, totals_headers, totals_rows, formats=totals_formats)
 
     ws_landmark = wb_out.create_sheet('LANDMARK')
     landmark_headers = [
@@ -794,7 +819,13 @@ def fetch_deal_details(deal_ids):
 
 def clean_val(v):
     if isinstance(v, str):
-        return v.strip()
+        stripped = v.strip()
+        if len(stripped) == 10 and stripped[4] == '-' and stripped[7] == '-':
+            try:
+                return datetime.strptime(stripped, '%Y-%m-%d').strftime('%m/%d/%Y')
+            except ValueError:
+                pass
+        return stripped
     if hasattr(v, 'strftime'):
         return v.strftime('%m/%d/%Y')
     return v
@@ -803,6 +834,14 @@ def clean_val(v):
 def write_header(ws, headers):
     for c, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=c, value=h)
+        cell.font = HDR_FONT
+        cell.fill = HDR_FILL
+        cell.alignment = CENTER_ALIGN
+
+
+def write_header_at(ws, row_idx, headers):
+    for c, h in enumerate(headers, 1):
+        cell = ws.cell(row=row_idx, column=c, value=h)
         cell.font = HDR_FONT
         cell.fill = HDR_FILL
         cell.alignment = CENTER_ALIGN
@@ -1049,6 +1088,8 @@ def main(cli_args=None):
 
     ws_new = wb.create_sheet("New_Deals")
     has_diff = True
+    nd_changes_rows = []
+    pd_changes_rows = []
     new_headers = [
         'ORG_ID', 'NAME', 'CUSTOMER_PART_ID',
         'Mapped_Status', 'Mapped_Probability', 'Mapped_Med_Rev',
@@ -1128,6 +1169,8 @@ def main(cli_args=None):
                         changed = True
                         break
                 change_val = 'CHANGED' if changed else ''
+            if change_val in ('NEW', 'CHANGED'):
+                nd_changes_rows.append((change_val, list(row_vals)))
             row_vals.append(change_val)
         write_row(ws_new, idx, row_vals, new_formats)
 
@@ -1158,6 +1201,16 @@ def main(cli_args=None):
     if has_diff:
         pd_headers.append('Change')
     write_header(ws_pd, pd_headers)
+    # PD_Info column formats (1-indexed):
+    # 7:Mapped_Med_Rev, 8-11:P1-P5, 13:FIRST_ORDER_DATE, 17:PD_value
+    pd_formats = [
+        None, None, None, None, None, None, '$#,##0.00',
+        'MM/DD/YYYY', 'MM/DD/YYYY', 'MM/DD/YYYY', 'MM/DD/YYYY',
+        None, 'MM/DD/YYYY', None, None,
+        None, '$#,##0.00', None, None, None, None, None, None,
+    ]
+    if has_diff:
+        pd_formats.append(None)
 
     for idx, cr in enumerate(matched_rows, 2):
         pd_id = cr.get('pd_id', '')
@@ -1199,8 +1252,12 @@ def main(cli_args=None):
                         pd_changed = True
                         break
                 pd_change = 'CHANGED' if pd_changed else ''
+            if pd_change in ('NEW', 'CHANGED'):
+                # Capture columns matching New_Deals structure for the Changes sheet:
+                # pd_row_vals[1:15] = ORG_ID..LANDMARK_QUOTE_NO; append '' for CALC_LABEL
+                pd_changes_rows.append((pd_change, list(pd_row_vals[1:15]) + ['']))
             pd_row_vals.append(pd_change)
-        write_row(ws_pd, idx, pd_row_vals)
+        write_row(ws_pd, idx, pd_row_vals, pd_formats)
 
     pd_col_count = len(pd_headers)
     pd_col_letter = get_column_letter(pd_col_count)
@@ -1213,6 +1270,32 @@ def main(cli_args=None):
     print(f"  PD_Info: {len(matched_rows)} rows ({len(deal_details)} deals fetched from Pipedrive)")
 
     wb.save(OUTPUT_FILE)
+
+    if has_diff and (nd_changes_rows or pd_changes_rows):
+        ws_ch = wb.create_sheet("Changes")
+        ch_idx = 1
+        # Headers: Source + Change_Type + New_Deals columns (without the Change col)
+        changes_base_hdrs = [h for h in new_headers if h != 'Change']
+        changes_base_fmts = [f for f, h in zip(new_formats, new_headers) if h != 'Change']
+        all_changes_hdrs = ['Source', 'Change_Type'] + changes_base_hdrs
+        all_changes_fmts = [None, None] + changes_base_fmts
+        write_header_at(ws_ch, ch_idx, all_changes_hdrs)
+        ch_idx += 1
+        for change_type, row_data in nd_changes_rows:
+            write_row(ws_ch, ch_idx, ['New_Deals', change_type] + list(row_data), all_changes_fmts)
+            ch_idx += 1
+        for change_type, row_data in pd_changes_rows:
+            write_row(ws_ch, ch_idx, ['PD_Info', change_type] + list(row_data), all_changes_fmts)
+            ch_idx += 1
+        ch_widths = [12, 12] + col_widths_new[:-1]
+        set_col_widths(ws_ch, ch_widths)
+        ws_ch.freeze_panes = 'A2'
+        total_ch = len(nd_changes_rows) + len(pd_changes_rows)
+        ws_ch.auto_filter.ref = f"A1:{get_column_letter(len(all_changes_hdrs))}{total_ch + 1}"
+        wb.save(OUTPUT_FILE)
+        print(f"  Changes: {total_ch} changed rows "
+              f"({len(nd_changes_rows)} New_Deals, {len(pd_changes_rows)} PD_Info)")
+
     elapsed = time.time() - start_time
     print(f"\n{'=' * 60}")
     print(f"  DONE in {elapsed:.1f}s")
