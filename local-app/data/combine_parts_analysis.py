@@ -476,7 +476,7 @@ def transform_raw_data(input_file, org_id_map):
     WIN_PROB = ci['WIN_PROBABILITY']
     CUST_PART, DESC = ci['CUSTOMER_PART_ID'], ci['DESCRIPTION']
     QTY, UNIT_PRICE = ci['QTY'], ci['UNIT_PRICE']
-    LINE_NO2, PART_ID2 = ci['LINE_NO2'], ci['PART_ID2']
+    LINE_NO, PART_ID = ci['LINE_NO'], ci['PART_ID']
     QUOTE_DATE, CREATE_DATE = ci['QUOTE_DATE'], ci['CREATE_DATE']
     PRODUCT_CODE = ci['PRODUCT_CODE']
 
@@ -541,7 +541,7 @@ def transform_raw_data(input_file, org_id_map):
     print("  Selecting median price breaks...")
     groups = defaultdict(list)
     for r in part_rows:
-        groups[(r[ID], str(r[LINE_NO2]), str(r[PART_ID2]))].append(r)
+        groups[(r[ID], str(r[LINE_NO]), str(r[PART_ID]))].append(r)
 
     result_rows = []
     for key, grp in groups.items():
