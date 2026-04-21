@@ -613,9 +613,44 @@ def render_results(result, diff=None, is_historical=False, run_label=None):
     nd_label = f"🔍 New Deals ({nd_total:,})" + (f" · {nd_changes} changes" if nd_changes else "")
     pi_label = f"📋 PD Info ({pi_total:,})" + (f" · {pi_changes} changes" if pi_changes else "")
 
-    tab_dash, tab_new, tab_pd, tab_parts = st.tabs([
-        "📊 Dashboard", nd_label, pi_label, "📦 All Parts"
-    ])
+    changes_rows = []
+    if diff:
+        for r in (diff.get("new_deals", {}).get("rows", []) or []):
+            ct = r.get("_change_type", "")
+            if ct and ct != "UNCHANGED":
+                changes_rows.append({
+                    "_change_type": ct,
+                    "_source": "New Deals",
+                    "customer_part_id": r.get("customer_part_id", ""),
+                    "_customer": r.get("name", ""),
+                    "_status": r.get("mapped_status", ""),
+                    "_revenue": r.get("mapped_med_rev", 0),
+                    "_label": r.get("calc_label", ""),
+                })
+        for r in (diff.get("pd_info", {}).get("rows", []) or []):
+            ct = r.get("_change_type", "")
+            if ct and ct != "UNCHANGED":
+                changes_rows.append({
+                    "_change_type": ct,
+                    "_source": "PD Info",
+                    "customer_part_id": r.get("customer_part_id", ""),
+                    "_customer": r.get("org_name", ""),
+                    "_status": r.get("status", ""),
+                    "_revenue": r.get("value", 0),
+                    "_label": r.get("label", ""),
+                })
+
+    has_changes = bool(changes_rows)
+    changes_count = len(changes_rows)
+    tab_labels = ["📊 Dashboard", nd_label, pi_label, "📦 All Parts"]
+    if has_changes:
+        tab_labels.append(f"🔄 Changes ({changes_count:,})")
+    all_tabs = st.tabs(tab_labels)
+    tab_dash = all_tabs[0]
+    tab_new = all_tabs[1]
+    tab_pd = all_tabs[2]
+    tab_parts = all_tabs[3]
+    tab_changes = all_tabs[4] if has_changes else None
 
     with tab_dash:
         st.markdown("### Key Metrics")
@@ -735,6 +770,18 @@ def render_results(result, diff=None, is_historical=False, run_label=None):
             st.dataframe(df, use_container_width=True, hide_index=True, height=450)
         else:
             st.info("No All Unique Parts data in this run.")
+
+    if tab_changes is not None:
+        with tab_changes:
+            changes_cols = [
+                {"key": "_source", "label": "Source"},
+                {"key": "customer_part_id", "label": "Part ID"},
+                {"key": "_customer", "label": "Customer"},
+                {"key": "_status", "label": "Status"},
+                {"key": "_revenue", "label": "Revenue / Value", "format": lambda v: fmt_currency(v) if v else "$0"},
+                {"key": "_label", "label": "Label"},
+            ]
+            render_diff_table(changes_rows, changes_cols, "changes")
 
 
 def main():

@@ -1107,6 +1107,33 @@ export default function Dashboard() {
     return merged;
   }, [result, diff]);
 
+  const changedRows = useMemo(() => {
+    if (!diff) return [];
+    const ndChanged = newDealsWithDiff
+      .filter((r) => r.changeType && r.changeType !== "UNCHANGED")
+      .map((r) => ({
+        changeType: r.changeType,
+        _source: "New Deals",
+        customer_part_id: r.customer_part_id,
+        _customer: r.name,
+        _status: r.mapped_status,
+        _revenue: r.mapped_med_rev,
+        _label: r.calc_label,
+      }));
+    const piChanged = pdInfoWithDiff
+      .filter((r) => r.changeType && r.changeType !== "UNCHANGED")
+      .map((r) => ({
+        changeType: r.changeType,
+        _source: "PD Info",
+        customer_part_id: r.customer_part_id,
+        _customer: r.org_name,
+        _status: r.status,
+        _revenue: r.value,
+        _label: r.label,
+      }));
+    return [...ndChanged, ...piChanged];
+  }, [newDealsWithDiff, pdInfoWithDiff, diff]);
+
   const navItems = [
     { id: "dashboard" as NavPage, label: "Dashboard", icon: LayoutDashboard, disabled: !result },
     { id: "process" as NavPage, label: "Process Files", icon: FolderInput },
@@ -1688,6 +1715,14 @@ export default function Dashboard() {
                     </span>
                   )}
                 </TabsTrigger>
+                {changedRows.length > 0 && (
+                  <TabsTrigger value="changes">
+                    Changes
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                      {changedRows.length}
+                    </span>
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="summary" className="space-y-6">
@@ -1800,6 +1835,28 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </TabsContent>
+
+              {changedRows.length > 0 && (
+                <TabsContent value="changes">
+                  <Card className="border-0 shadow-sm">
+                    <CardContent className="pt-6">
+                      <DiffDataTable
+                        data={changedRows}
+                        showDiff={true}
+                        tableLabel="Changes"
+                        columns={[
+                          { key: "_source", label: "Source" },
+                          { key: "customer_part_id", label: "Part ID" },
+                          { key: "_customer", label: "Customer" },
+                          { key: "_status", label: "Status" },
+                          { key: "_revenue", label: "Revenue / Value", format: (v) => formatCurrency(v || 0) },
+                          { key: "_label", label: "Label" },
+                        ]}
+                      />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              )}
             </Tabs>
           </div>
         )}
