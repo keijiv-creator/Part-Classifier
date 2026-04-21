@@ -1269,8 +1269,6 @@ def main(cli_args=None):
     ws_pd.auto_filter.ref = f"A1:{pd_col_letter}{len(matched_rows) + 1}"
     print(f"  PD_Info: {len(matched_rows)} rows ({len(deal_details)} deals fetched from Pipedrive)")
 
-    wb.save(OUTPUT_FILE)
-
     if has_diff and (nd_changes_rows or pd_changes_rows):
         ws_ch = wb.create_sheet("Changes")
         ch_idx = 1
@@ -1292,9 +1290,10 @@ def main(cli_args=None):
         ws_ch.freeze_panes = 'A2'
         total_ch = len(nd_changes_rows) + len(pd_changes_rows)
         ws_ch.auto_filter.ref = f"A1:{get_column_letter(len(all_changes_hdrs))}{total_ch + 1}"
-        wb.save(OUTPUT_FILE)
         print(f"  Changes: {total_ch} changed rows "
               f"({len(nd_changes_rows)} New_Deals, {len(pd_changes_rows)} PD_Info)")
+
+    wb.save(OUTPUT_FILE)
 
     elapsed = time.time() - start_time
     print(f"\n{'=' * 60}")
