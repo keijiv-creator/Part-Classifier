@@ -664,6 +664,8 @@ export default function Dashboard() {
   const [jobLogs, setJobLogs] = useState<string[]>([]);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const errorRef = useRef<boolean>(false);
+  const bannerShownRef = useRef<boolean>(false);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState("summary");
@@ -689,6 +691,32 @@ export default function Dashboard() {
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
+  const [bannerVisible, setBannerVisible] = useState(false);
+
+  useEffect(() => {
+    bannerShownRef.current = showResumeBanner;
+    if (showResumeBanner) {
+      const frame = requestAnimationFrame(() => setBannerVisible(true));
+      return () => cancelAnimationFrame(frame);
+    } else {
+      setBannerVisible(false);
+    }
+  }, [showResumeBanner]);
+
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current !== null) clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
+
+  const dismissResumeBanner = () => {
+    setBannerVisible(false);
+    if (dismissTimerRef.current !== null) clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => {
+      dismissTimerRef.current = null;
+      setShowResumeBanner(false);
+    }, 300);
+  };
 
   const copyRunLink = (runId: number) => {
     const url = new URL(window.location.href);
@@ -815,14 +843,26 @@ export default function Dashboard() {
               pollRef.current = null;
               sessionStorage.removeItem("pendingJobId");
               setProgress(100);
-              setShowResumeBanner(false);
-              setResult(pollData.result);
-              setViewingHistoricalRun(null);
-              setSavedCurrentResult(null);
-              setActiveTab("summary");
-              setActivePage("dashboard");
-              fetchRuns();
-              resolve();
+              const finalize = () => {
+                setShowResumeBanner(false);
+                setResult(pollData.result);
+                setViewingHistoricalRun(null);
+                setSavedCurrentResult(null);
+                setActiveTab("summary");
+                setActivePage("dashboard");
+                fetchRuns();
+                resolve();
+              };
+              if (bannerShownRef.current) {
+                setBannerVisible(false);
+                if (dismissTimerRef.current !== null) clearTimeout(dismissTimerRef.current);
+                dismissTimerRef.current = setTimeout(() => {
+                  dismissTimerRef.current = null;
+                  finalize();
+                }, 300);
+              } else {
+                finalize();
+              }
             } else if (pollData.status === "error") {
               pollRef.current = null;
               sessionStorage.removeItem("pendingJobId");
@@ -1361,14 +1401,18 @@ export default function Dashboard() {
             </div>
 
             {showResumeBanner && (
-              <div className="flex items-start gap-3 mb-6 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-800">
+              <div
+                className={`flex items-start gap-3 mb-6 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 transition-all duration-300 ease-in-out ${
+                  bannerVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
+                }`}
+              >
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
                 <p className="text-sm flex-1">
                   <span className="font-semibold">Resuming your previous analysis…</span>{" "}
                   The analysis that was running before the page refresh has been reconnected and is still in progress.
                 </p>
                 <button
-                  onClick={() => setShowResumeBanner(false)}
+                  onClick={dismissResumeBanner}
                   className="shrink-0 text-amber-500 hover:text-amber-700 transition-colors"
                   aria-label="Dismiss"
                 >
