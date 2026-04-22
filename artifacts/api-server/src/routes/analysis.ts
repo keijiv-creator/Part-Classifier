@@ -24,6 +24,41 @@ interface JobState {
 
 const jobs = new Map<string, JobState>();
 
+// On startup, remove any /tmp/downloads/ subdirectories older than 2 hours
+// that may have been left behind by a previous server process.
+(function sweepStaleDownloadsOnStartup() {
+  const downloadsDir = "/tmp/downloads";
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+  try {
+    if (!fs.existsSync(downloadsDir)) {
+      console.log("[startup cleanup] /tmp/downloads does not exist — nothing to sweep.");
+      return;
+    }
+    const entries = fs.readdirSync(downloadsDir);
+    let removed = 0;
+    for (const entry of entries) {
+      const entryPath = path.join(downloadsDir, entry);
+      try {
+        const stat = fs.statSync(entryPath);
+        if (stat.mtimeMs < cutoff) {
+          fs.rmSync(entryPath, { recursive: true, force: true });
+          console.log(`[startup cleanup] Removed stale download directory: ${entryPath}`);
+          removed++;
+        }
+      } catch (err) {
+        console.warn(`[startup cleanup] Could not process ${entryPath}:`, err);
+      }
+    }
+    if (removed === 0) {
+      console.log("[startup cleanup] No stale download directories found.");
+    } else {
+      console.log(`[startup cleanup] Removed ${removed} stale download director${removed === 1 ? "y" : "ies"}.`);
+    }
+  } catch (err) {
+    console.warn("[startup cleanup] Failed to sweep /tmp/downloads:", err);
+  }
+})();
+
 setInterval(() => {
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
   for (const [id, job] of jobs.entries()) {
