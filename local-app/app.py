@@ -226,6 +226,44 @@ def render_pd_file_warnings(pd_status, location="main"):
             )
 
 
+def render_pd_health_notice(pd_file_status):
+    """Render a compact Pipedrive data-health notice inside the Dashboard tab.
+
+    pd_file_status is the dict stored in result["_pd_file_status"] at run time.
+    Shows nothing when the status is clean or when the key is absent (old runs).
+    """
+    if not pd_file_status:
+        return
+
+    missing = [f for f, s in pd_file_status.items() if not s.get("present")]
+    stale = [
+        (f, s) for f, s in pd_file_status.items()
+        if s.get("present") and s.get("stale")
+    ]
+
+    if not missing and not stale:
+        return
+
+    parts = []
+    if missing:
+        names = " & ".join(f"`{f}`" for f in missing)
+        parts.append(f"**{names} {'was' if len(missing) == 1 else 'were'} missing** — PD enrichment was skipped for this run")
+    for fname, s in stale:
+        age = s.get("age_days")
+        age_str = f"{int(age)}d old" if age is not None else "stale"
+        mtime = s.get("mtime")
+        if mtime:
+            try:
+                mtime_str = datetime.fromisoformat(str(mtime)).strftime("%Y-%m-%d") if isinstance(mtime, str) else mtime.strftime("%Y-%m-%d")
+                age_str = f"{int(age)}d old, last updated {mtime_str}"
+            except Exception:
+                pass
+        parts.append(f"**`{fname}`** was {age_str} at run time — PD data may be out of date")
+
+    notice = "  \n".join(f"⚠️ {p}" for p in parts)
+    st.warning(notice, icon=None)
+
+
 def fmt_currency(v):
     if v is None:
         return "$0"
@@ -655,6 +693,7 @@ def render_results(result, diff=None, is_historical=False, run_label=None):
     with tab_dash:
         st.markdown("### Key Metrics")
         render_kpi_row(summary)
+        render_pd_health_notice(result.get("_pd_file_status"))
         st.markdown("### Charts")
         render_charts(analytics)
         st.markdown("### Top Customers")
@@ -845,6 +884,7 @@ def main():
                     )
 
                     rdate = str(report_date)
+                    result["_pd_file_status"] = pd_status
 
                     all_runs_before = load_runs()
                     save_run(result, rdate, int(cutoff_year))
