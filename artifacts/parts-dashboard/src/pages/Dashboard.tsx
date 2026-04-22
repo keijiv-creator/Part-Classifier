@@ -822,7 +822,7 @@ export default function Dashboard() {
   useEffect(() => {
     return () => {
       if (pollRef.current) {
-        clearInterval(pollRef.current);
+        clearTimeout(pollRef.current);
         pollRef.current = null;
       }
     };
@@ -900,12 +900,10 @@ export default function Dashboard() {
       if (!jobId) throw new Error("No job ID returned from server");
 
       await new Promise<void>((resolve, reject) => {
-        pollRef.current = setInterval(async () => {
+        const doPoll = async () => {
           try {
             const pollResp = await fetch(`${API_BASE}/analysis/jobs/${jobId}`);
             if (!pollResp.ok) {
-              clearInterval(pollRef.current!);
-              pollRef.current = null;
               reject(new Error("Failed to poll job status"));
               return;
             }
@@ -915,7 +913,6 @@ export default function Dashboard() {
               setProgress(Math.min(10 + Math.floor(pollData.logs.length * 1.5), 90));
             }
             if (pollData.status === "done") {
-              clearInterval(pollRef.current!);
               pollRef.current = null;
               setProgress(100);
               setResult(pollData.result);
@@ -926,25 +923,26 @@ export default function Dashboard() {
               fetchRuns();
               resolve();
             } else if (pollData.status === "error") {
-              clearInterval(pollRef.current!);
               pollRef.current = null;
               reject(new Error(pollData.error || "Analysis failed"));
+            } else {
+              pollRef.current = setTimeout(doPoll, 3000);
             }
           } catch (pollErr: any) {
             if (!error_ref.current) {
               error_ref.current = true;
-              clearInterval(pollRef.current!);
               pollRef.current = null;
               reject(pollErr);
             }
           }
-        }, 3000);
+        };
+        pollRef.current = setTimeout(doPoll, 1000);
       });
     } catch (err: any) {
       setError(err.message || "An error occurred");
     } finally {
       if (pollRef.current) {
-        clearInterval(pollRef.current);
+        clearTimeout(pollRef.current);
         pollRef.current = null;
       }
       setLoading(false);
