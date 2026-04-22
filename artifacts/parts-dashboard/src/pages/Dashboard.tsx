@@ -777,6 +777,79 @@ export default function Dashboard() {
     } catch {}
   };
 
+  const startPollingJob = useCallback(async (jobId: string) => {
+    setLoading(true);
+    setError("");
+    errorRef.current = false;
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let consecutiveFailures = 0;
+        const MAX_CONSECUTIVE_FAILURES = 3;
+        const doPoll = async () => {
+          try {
+            const pollResp = await fetch(`${API_BASE}/analysis/jobs/${jobId}`);
+            if (pollResp.status === 404) {
+              sessionStorage.removeItem("pendingJobId");
+              reject(new Error("Job not found — it may have expired or the server was restarted."));
+              return;
+            }
+            if (!pollResp.ok) {
+              consecutiveFailures++;
+              if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                sessionStorage.removeItem("pendingJobId");
+                reject(new Error("Failed to poll job status after multiple retries"));
+              } else {
+                pollRef.current = setTimeout(doPoll, 3000);
+              }
+              return;
+            }
+            consecutiveFailures = 0;
+            const pollData = await pollResp.json();
+            if (pollData.logs?.length) {
+              setJobLogs(pollData.logs);
+              setProgress(Math.min(10 + Math.floor(pollData.logs.length * 1.5), 90));
+            }
+            if (pollData.status === "done") {
+              pollRef.current = null;
+              sessionStorage.removeItem("pendingJobId");
+              setProgress(100);
+              setResult(pollData.result);
+              setViewingHistoricalRun(null);
+              setSavedCurrentResult(null);
+              setActiveTab("summary");
+              setActivePage("dashboard");
+              fetchRuns();
+              resolve();
+            } else if (pollData.status === "error") {
+              pollRef.current = null;
+              sessionStorage.removeItem("pendingJobId");
+              reject(new Error(pollData.error || "Analysis failed"));
+            } else {
+              pollRef.current = setTimeout(doPoll, 3000);
+            }
+          } catch (pollErr: any) {
+            if (!errorRef.current) {
+              errorRef.current = true;
+              pollRef.current = null;
+              sessionStorage.removeItem("pendingJobId");
+              reject(pollErr);
+            }
+          }
+        };
+        pollRef.current = setTimeout(doPoll, 1000);
+      });
+    } catch (err: any) {
+      setError(err.message || "An error occurred");
+    } finally {
+      if (pollRef.current) {
+        clearTimeout(pollRef.current);
+        pollRef.current = null;
+      }
+      setLoading(false);
+    }
+  }, []);
+
   const clearAllHistory = async () => {
     setClearingHistory(true);
     try {
@@ -797,6 +870,46 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchRuns();
+
+    const pendingJobId = sessionStorage.getItem("pendingJobId");
+    if (pendingJobId) {
+      fetch(`${API_BASE}/analysis/jobs/${pendingJobId}`)
+        .then((resp) => {
+          if (resp.status === 404) {
+            sessionStorage.removeItem("pendingJobId");
+            return null;
+          }
+          if (!resp.ok) {
+            return null;
+          }
+          return resp.json();
+        })
+        .then((data) => {
+          if (!data) return;
+          if (data.status === "done") {
+            sessionStorage.removeItem("pendingJobId");
+            setResult(data.result);
+            setViewingHistoricalRun(null);
+            setSavedCurrentResult(null);
+            setActiveTab("summary");
+            setActivePage("dashboard");
+            fetchRuns();
+            toast.success("Your analysis completed — results restored after page refresh.");
+          } else if (data.status === "running") {
+            toast.info("Reconnecting to your running analysis…");
+            setJobLogs(data.logs || []);
+            setProgress(data.logs?.length ? Math.min(10 + Math.floor(data.logs.length * 1.5), 90) : 5);
+            startPollingJob(pendingJobId);
+          } else {
+            sessionStorage.removeItem("pendingJobId");
+          }
+        })
+        .catch(() => {
+          sessionStorage.removeItem("pendingJobId");
+        });
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const runParam = params.get("run");
     if (runParam) {
@@ -899,61 +1012,16 @@ export default function Dashboard() {
       const { jobId } = await resp.json();
       if (!jobId) throw new Error("No job ID returned from server");
 
-      await new Promise<void>((resolve, reject) => {
-        let consecutiveFailures = 0;
-        const MAX_CONSECUTIVE_FAILURES = 3;
-        const doPoll = async () => {
-          try {
-            const pollResp = await fetch(`${API_BASE}/analysis/jobs/${jobId}`);
-            if (!pollResp.ok) {
-              consecutiveFailures++;
-              if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-                reject(new Error("Failed to poll job status after multiple retries"));
-              } else {
-                pollRef.current = setTimeout(doPoll, 3000);
-              }
-              return;
-            }
-            consecutiveFailures = 0;
-            const pollData = await pollResp.json();
-            if (pollData.logs?.length) {
-              setJobLogs(pollData.logs);
-              setProgress(Math.min(10 + Math.floor(pollData.logs.length * 1.5), 90));
-            }
-            if (pollData.status === "done") {
-              pollRef.current = null;
-              setProgress(100);
-              setResult(pollData.result);
-              setViewingHistoricalRun(null);
-              setSavedCurrentResult(null);
-              setActiveTab("summary");
-              setActivePage("dashboard");
-              fetchRuns();
-              resolve();
-            } else if (pollData.status === "error") {
-              pollRef.current = null;
-              reject(new Error(pollData.error || "Analysis failed"));
-            } else {
-              pollRef.current = setTimeout(doPoll, 3000);
-            }
-          } catch (pollErr: any) {
-            if (!errorRef.current) {
-              errorRef.current = true;
-              pollRef.current = null;
-              reject(pollErr);
-            }
-          }
-        };
-        pollRef.current = setTimeout(doPoll, 1000);
-      });
+      sessionStorage.setItem("pendingJobId", jobId);
     } catch (err: any) {
       setError(err.message || "An error occurred");
-    } finally {
-      if (pollRef.current) {
-        clearTimeout(pollRef.current);
-        pollRef.current = null;
-      }
       setLoading(false);
+      return;
+    }
+
+    const savedJobId = sessionStorage.getItem("pendingJobId");
+    if (savedJobId) {
+      await startPollingJob(savedJobId);
     }
   };
 
