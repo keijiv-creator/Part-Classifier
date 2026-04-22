@@ -182,15 +182,18 @@ router.post(
             cwd: "/home/runner/workspace",
           });
 
-          proc.stdout.on("data", (d: Buffer) => {
-            const lines = d.toString().split("\n").filter(Boolean);
+          const MAX_LOGS = 2000;
+          const appendLogs = (lines: string[]) => {
             job.logs.push(...lines);
+            if (job.logs.length > MAX_LOGS) job.logs = job.logs.slice(-MAX_LOGS);
+          };
+          proc.stdout.on("data", (d: Buffer) => {
+            appendLogs(d.toString().split("\n").filter(Boolean));
           });
           proc.stderr.on("data", (d: Buffer) => {
             const text = d.toString();
             stderrText += text;
-            const lines = text.split("\n").filter(Boolean);
-            job.logs.push(...lines.map((l: string) => `[stderr] ${l}`));
+            appendLogs(text.split("\n").filter(Boolean).map((l: string) => `[stderr] ${l}`));
           });
           proc.on("close", (code: number | null) => resolve(code ?? 1));
         });
