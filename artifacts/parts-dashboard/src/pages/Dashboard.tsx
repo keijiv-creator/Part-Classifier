@@ -662,8 +662,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [jobLogs, setJobLogs] = useState<string[]>([]);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const error_ref = useRef<boolean>(false);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorRef = useRef<boolean>(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState("summary");
@@ -874,7 +874,7 @@ export default function Dashboard() {
     setError("");
     setJobLogs([]);
     setProgress(5);
-    error_ref.current = false;
+    errorRef.current = false;
 
     const formData = new FormData();
     formData.append("booking_file", bookingsFile);
@@ -929,8 +929,8 @@ export default function Dashboard() {
               pollRef.current = setTimeout(doPoll, 3000);
             }
           } catch (pollErr: any) {
-            if (!error_ref.current) {
-              error_ref.current = true;
+            if (!errorRef.current) {
+              errorRef.current = true;
               pollRef.current = null;
               reject(pollErr);
             }
