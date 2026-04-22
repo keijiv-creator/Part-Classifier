@@ -661,6 +661,9 @@ export default function Dashboard() {
   const [reportDateWarning, setReportDateWarning] = useState("");
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [jobLogs, setJobLogs] = useState<string[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const error_ref = useRef<boolean>(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState("summary");
@@ -860,7 +863,9 @@ export default function Dashboard() {
     setShowApiKeyDialog(false);
     setLoading(true);
     setError("");
-    setProgress(10);
+    setJobLogs([]);
+    setProgress(5);
+    error_ref.current = false;
 
     const formData = new FormData();
     formData.append("booking_file", bookingsFile);
@@ -871,36 +876,68 @@ export default function Dashboard() {
       formData.append("pipedrive_api_key", key);
     }
 
-    const progressTimer = setInterval(() => {
-      setProgress((p) => Math.min(p + 2, 90));
-    }, 2000);
-
     try {
       const resp = await fetch(`${API_BASE}/analysis/run`, {
         method: "POST",
         body: formData,
       });
 
-      clearInterval(progressTimer);
-      setProgress(95);
-
       if (!resp.ok) {
         const err = await resp.json();
         throw new Error(err.error || "Analysis failed");
       }
 
-      const data: AnalysisResult = await resp.json();
-      setResult(data);
-      setViewingHistoricalRun(null);
-      setSavedCurrentResult(null);
-      setProgress(100);
-      setActiveTab("summary");
-      setActivePage("dashboard");
-      fetchRuns();
+      const { jobId } = await resp.json();
+      if (!jobId) throw new Error("No job ID returned from server");
+
+      await new Promise<void>((resolve, reject) => {
+        pollRef.current = setInterval(async () => {
+          try {
+            const pollResp = await fetch(`${API_BASE}/analysis/jobs/${jobId}`);
+            if (!pollResp.ok) {
+              clearInterval(pollRef.current!);
+              pollRef.current = null;
+              reject(new Error("Failed to poll job status"));
+              return;
+            }
+            const pollData = await pollResp.json();
+            if (pollData.logs?.length) {
+              setJobLogs(pollData.logs);
+              setProgress(Math.min(10 + Math.floor(pollData.logs.length * 1.5), 90));
+            }
+            if (pollData.status === "done") {
+              clearInterval(pollRef.current!);
+              pollRef.current = null;
+              setProgress(100);
+              setResult(pollData.result);
+              setViewingHistoricalRun(null);
+              setSavedCurrentResult(null);
+              setActiveTab("summary");
+              setActivePage("dashboard");
+              fetchRuns();
+              resolve();
+            } else if (pollData.status === "error") {
+              clearInterval(pollRef.current!);
+              pollRef.current = null;
+              reject(new Error(pollData.error || "Analysis failed"));
+            }
+          } catch (pollErr: any) {
+            if (!error_ref.current) {
+              error_ref.current = true;
+              clearInterval(pollRef.current!);
+              pollRef.current = null;
+              reject(pollErr);
+            }
+          }
+        }, 3000);
+      });
     } catch (err: any) {
       setError(err.message || "An error occurred");
     } finally {
-      clearInterval(progressTimer);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
       setLoading(false);
     }
   };
@@ -1424,9 +1461,16 @@ export default function Dashboard() {
             {loading && (
               <div className="mb-4">
                 <Progress value={progress} className="h-2" />
-                <p className="text-xs text-muted-foreground mt-1.5 text-center">
-                  Processing... {progress}% complete
+                <p className="text-xs text-muted-foreground mt-1 text-center">
+                  {progress < 100 ? "Processing..." : "Complete!"}
                 </p>
+                {jobLogs.length > 0 && (
+                  <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2 max-h-36 overflow-y-auto font-mono text-[10px] text-gray-600 leading-relaxed">
+                    {jobLogs.map((line, i) => (
+                      <div key={i} className={line.startsWith("[stderr]") ? "text-amber-600" : ""}>{line}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
