@@ -27,7 +27,10 @@ const jobs = new Map<string, JobState>();
 setInterval(() => {
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
   for (const [id, job] of jobs.entries()) {
-    if (job.createdAt < cutoff) jobs.delete(id);
+    if (job.createdAt < cutoff) {
+      jobs.delete(id);
+      try { fs.rmSync(`/tmp/downloads/${id}`, { recursive: true, force: true }); } catch {}
+    }
   }
 }, 30 * 60 * 1000);
 
@@ -338,6 +341,29 @@ router.post(
 
         jsonData.run_id = runId;
         jsonData.diff = diff;
+
+        const downloadsDir = `/tmp/downloads/${jobId}`;
+        fs.mkdirSync(downloadsDir, { recursive: true });
+
+        const moveToDownloads = (filePath: string | undefined): string | undefined => {
+          if (!filePath) return filePath;
+          try {
+            if (fs.existsSync(filePath)) {
+              const dest = path.join(downloadsDir, path.basename(filePath));
+              fs.copyFileSync(filePath, dest);
+              return dest;
+            }
+            console.warn(`[cleanup] Expected output file not found, skipping copy: ${filePath}`);
+          } catch (copyErr: any) {
+            console.warn(`[cleanup] Failed to copy output file to downloads dir (download will 404): ${filePath} — ${copyErr.message}`);
+          }
+          return filePath;
+        };
+
+        jsonData.output_file = moveToDownloads(jsonData.output_file);
+        jsonData.natman_bookings_file = moveToDownloads(jsonData.natman_bookings_file);
+        jsonData.pdsync_file = moveToDownloads(jsonData.pdsync_file);
+
         job.result = jsonData;
         job.status = "done";
       } catch (err: any) {
@@ -346,6 +372,7 @@ router.post(
       } finally {
         try { fs.unlinkSync(bookingPath); } catch {}
         try { fs.unlinkSync(nationalPath); } catch {}
+        try { fs.rmSync(outputDir, { recursive: true, force: true }); } catch {}
       }
     })();
   }
