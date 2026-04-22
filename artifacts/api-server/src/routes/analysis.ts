@@ -24,48 +24,107 @@ interface JobState {
 
 const jobs = new Map<string, JobState>();
 
-// On startup, remove any /tmp/downloads/ subdirectories older than 2 hours
-// that may have been left behind by a previous server process.
+// On startup, remove any /tmp/downloads/ subdirectories and /tmp/uploads/ files
+// older than 2 hours that may have been left behind by a previous server process.
 (function sweepStaleDownloadsOnStartup() {
-  const downloadsDir = "/tmp/downloads";
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+
+  // Sweep stale download directories
+  const downloadsDir = "/tmp/downloads";
   try {
     if (!fs.existsSync(downloadsDir)) {
       console.log("[startup cleanup] /tmp/downloads does not exist — nothing to sweep.");
-      return;
-    }
-    const entries = fs.readdirSync(downloadsDir);
-    let removed = 0;
-    for (const entry of entries) {
-      const entryPath = path.join(downloadsDir, entry);
-      try {
-        const stat = fs.statSync(entryPath);
-        if (stat.mtimeMs < cutoff) {
-          fs.rmSync(entryPath, { recursive: true, force: true });
-          console.log(`[startup cleanup] Removed stale download directory: ${entryPath}`);
-          removed++;
-        }
-      } catch (err) {
-        console.warn(`[startup cleanup] Could not process ${entryPath}:`, err);
-      }
-    }
-    if (removed === 0) {
-      console.log("[startup cleanup] No stale download directories found.");
     } else {
-      console.log(`[startup cleanup] Removed ${removed} stale download director${removed === 1 ? "y" : "ies"}.`);
+      const entries = fs.readdirSync(downloadsDir);
+      let removed = 0;
+      for (const entry of entries) {
+        const entryPath = path.join(downloadsDir, entry);
+        try {
+          const stat = fs.statSync(entryPath);
+          if (stat.mtimeMs < cutoff) {
+            fs.rmSync(entryPath, { recursive: true, force: true });
+            console.log(`[startup cleanup] Removed stale download directory: ${entryPath}`);
+            removed++;
+          }
+        } catch (err) {
+          console.warn(`[startup cleanup] Could not process ${entryPath}:`, err);
+        }
+      }
+      if (removed === 0) {
+        console.log("[startup cleanup] No stale download directories found.");
+      } else {
+        console.log(`[startup cleanup] Removed ${removed} stale download director${removed === 1 ? "y" : "ies"}.`);
+      }
     }
   } catch (err) {
     console.warn("[startup cleanup] Failed to sweep /tmp/downloads:", err);
+  }
+
+  // Sweep stale upload files
+  const uploadsDir = "/tmp/uploads";
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      console.log("[startup cleanup] /tmp/uploads does not exist — nothing to sweep.");
+    } else {
+      const entries = fs.readdirSync(uploadsDir);
+      let removed = 0;
+      for (const entry of entries) {
+        const entryPath = path.join(uploadsDir, entry);
+        try {
+          const stat = fs.statSync(entryPath);
+          if (stat.mtimeMs < cutoff) {
+            fs.rmSync(entryPath, { recursive: true, force: true });
+            console.log(`[startup cleanup] Removed stale upload file: ${entryPath}`);
+            removed++;
+          }
+        } catch (err) {
+          console.warn(`[startup cleanup] Could not process ${entryPath}:`, err);
+        }
+      }
+      if (removed === 0) {
+        console.log("[startup cleanup] No stale upload files found.");
+      } else {
+        console.log(`[startup cleanup] Removed ${removed} stale upload file${removed === 1 ? "" : "s"}.`);
+      }
+    }
+  } catch (err) {
+    console.warn("[startup cleanup] Failed to sweep /tmp/uploads:", err);
   }
 })();
 
 setInterval(() => {
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+
+  // Sweep stale in-memory jobs and their download directories
   for (const [id, job] of jobs.entries()) {
     if (job.createdAt < cutoff) {
       jobs.delete(id);
       try { fs.rmSync(`/tmp/downloads/${id}`, { recursive: true, force: true }); } catch {}
     }
+  }
+
+  // Sweep stale upload files
+  const uploadsDir = "/tmp/uploads";
+  try {
+    if (fs.existsSync(uploadsDir)) {
+      const entries = fs.readdirSync(uploadsDir);
+      let removed = 0;
+      for (const entry of entries) {
+        const entryPath = path.join(uploadsDir, entry);
+        try {
+          const stat = fs.statSync(entryPath);
+          if (stat.mtimeMs < cutoff) {
+            fs.rmSync(entryPath, { recursive: true, force: true });
+            removed++;
+          }
+        } catch {}
+      }
+      if (removed > 0) {
+        console.log(`[interval cleanup] Removed ${removed} stale upload file${removed === 1 ? "" : "s"}.`);
+      }
+    }
+  } catch (err) {
+    console.warn("[interval cleanup] Failed to sweep /tmp/uploads:", err);
   }
 }, 30 * 60 * 1000);
 
