@@ -688,6 +688,7 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
 
   const copyRunLink = (runId: number) => {
     const url = new URL(window.location.href);
@@ -814,6 +815,7 @@ export default function Dashboard() {
               pollRef.current = null;
               sessionStorage.removeItem("pendingJobId");
               setProgress(100);
+              setShowResumeBanner(false);
               setResult(pollData.result);
               setViewingHistoricalRun(null);
               setSavedCurrentResult(null);
@@ -899,6 +901,7 @@ export default function Dashboard() {
             toast.info("Reconnecting to your running analysis…");
             setJobLogs(data.logs || []);
             setProgress(data.logs?.length ? Math.min(10 + Math.floor(data.logs.length * 1.5), 90) : 5);
+            setShowResumeBanner(true);
             startPollingJob(pendingJobId);
           } else {
             sessionStorage.removeItem("pendingJobId");
@@ -1356,6 +1359,23 @@ export default function Dashboard() {
                 Upload raw exports to identify new business and sync with Pipedrive.
               </p>
             </div>
+
+            {showResumeBanner && (
+              <div className="flex items-start gap-3 mb-6 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-800">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                <p className="text-sm flex-1">
+                  <span className="font-semibold">Resuming your previous analysis…</span>{" "}
+                  The analysis that was running before the page refresh has been reconnected and is still in progress.
+                </p>
+                <button
+                  onClick={() => setShowResumeBanner(false)}
+                  className="shrink-0 text-amber-500 hover:text-amber-700 transition-colors"
+                  aria-label="Dismiss"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <Card className="border-0 shadow-sm">
