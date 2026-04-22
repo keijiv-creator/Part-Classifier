@@ -819,6 +819,15 @@ export default function Dashboard() {
     }
   }, [runs, reportDate]);
 
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, []);
+
   const runComparison = async () => {
     if (!compareRunA || !compareRunB) return;
     setComparing(true);

@@ -172,6 +172,7 @@ router.post(
 
     (async () => {
       try {
+        let stderrText = "";
         const exitCode = await new Promise<number>((resolve) => {
           const spawnEnv = { ...process.env };
           if (pipedriveApiKey) spawnEnv.PIPEDRIVE_API_KEY = pipedriveApiKey;
@@ -186,7 +187,9 @@ router.post(
             job.logs.push(...lines);
           });
           proc.stderr.on("data", (d: Buffer) => {
-            const lines = d.toString().split("\n").filter(Boolean);
+            const text = d.toString();
+            stderrText += text;
+            const lines = text.split("\n").filter(Boolean);
             job.logs.push(...lines.map((l: string) => `[stderr] ${l}`));
           });
           proc.on("close", (code: number | null) => resolve(code ?? 1));
@@ -194,7 +197,7 @@ router.post(
 
         if (exitCode !== 0) {
           job.status = "error";
-          job.error = "Analysis script exited with code " + exitCode;
+          job.error = stderrText.trim() || ("Analysis script exited with code " + exitCode);
           return;
         }
 
