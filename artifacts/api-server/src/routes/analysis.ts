@@ -146,24 +146,6 @@ router.post(
     const pipedriveApiKey = req.body?.pipedrive_api_key;
     if (cutoffYear) args.push("--cutoff-year", String(cutoffYear));
 
-    try {
-      const latestRuns = await db.select({ id: runsTable.id })
-        .from(runsTable)
-        .orderBy(desc(runsTable.id))
-        .limit(1);
-
-      if (latestRuns.length > 0) {
-        const prevParts = await db.select().from(runPartsTable).where(eq(runPartsTable.runId, latestRuns[0].id));
-        if (prevParts.length > 0) {
-          const prevRunJsonPath = path.join(outputDir, "prev_run.json");
-          fs.writeFileSync(prevRunJsonPath, JSON.stringify(prevParts));
-          args.push("--previous-run-json", prevRunJsonPath);
-        }
-      }
-    } catch (prevErr: any) {
-      console.error("Could not fetch previous run for diff (non-fatal):", prevErr.message);
-    }
-
     const jobId = crypto.randomUUID();
     const job: JobState = { status: "running", logs: [], createdAt: Date.now() };
     jobs.set(jobId, job);
@@ -172,6 +154,24 @@ router.post(
 
     (async () => {
       try {
+        try {
+          const latestRuns = await db.select({ id: runsTable.id })
+            .from(runsTable)
+            .orderBy(desc(runsTable.id))
+            .limit(1);
+
+          if (latestRuns.length > 0) {
+            const prevParts = await db.select().from(runPartsTable).where(eq(runPartsTable.runId, latestRuns[0].id));
+            if (prevParts.length > 0) {
+              const prevRunJsonPath = path.join(outputDir, "prev_run.json");
+              fs.writeFileSync(prevRunJsonPath, JSON.stringify(prevParts));
+              args.push("--previous-run-json", prevRunJsonPath);
+            }
+          }
+        } catch (prevErr: any) {
+          console.error("Could not fetch previous run for diff (non-fatal):", prevErr.message);
+        }
+
         let stderrText = "";
         const exitCode = await new Promise<number>((resolve) => {
           const spawnEnv = { ...process.env };
