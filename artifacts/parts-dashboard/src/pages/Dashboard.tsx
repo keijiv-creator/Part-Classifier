@@ -900,13 +900,21 @@ export default function Dashboard() {
       if (!jobId) throw new Error("No job ID returned from server");
 
       await new Promise<void>((resolve, reject) => {
+        let consecutiveFailures = 0;
+        const MAX_CONSECUTIVE_FAILURES = 3;
         const doPoll = async () => {
           try {
             const pollResp = await fetch(`${API_BASE}/analysis/jobs/${jobId}`);
             if (!pollResp.ok) {
-              reject(new Error("Failed to poll job status"));
+              consecutiveFailures++;
+              if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                reject(new Error("Failed to poll job status after multiple retries"));
+              } else {
+                pollRef.current = setTimeout(doPoll, 3000);
+              }
               return;
             }
+            consecutiveFailures = 0;
             const pollData = await pollResp.json();
             if (pollData.logs?.length) {
               setJobLogs(pollData.logs);
