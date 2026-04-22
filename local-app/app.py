@@ -174,6 +174,38 @@ def check_pipedrive_files():
     return results
 
 
+def load_pd_refresh_meta():
+    """Return the Pipedrive refresh metadata dict, or None if unavailable."""
+    meta_path = os.path.join(DATA_DIR, "pd_refresh_meta.json")
+    if not os.path.exists(meta_path):
+        return None
+    try:
+        with open(meta_path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def render_pd_refresh_status():
+    """Display the last Pipedrive refresh time and mode in the sidebar."""
+    meta = load_pd_refresh_meta()
+    if meta is None:
+        st.caption("⚪ Pipedrive data: never refreshed")
+        return
+
+    raw_ts = meta.get("last_refresh_utc", "")
+    mode = meta.get("last_refresh_mode", "unknown")
+
+    try:
+        dt = datetime.strptime(raw_ts, "%Y-%m-%dT%H:%M:%SZ")
+        local_dt = dt.strftime("%d %b %Y %H:%M") + " UTC"
+    except (ValueError, TypeError):
+        local_dt = raw_ts or "unknown"
+
+    mode_label = {"full": "full refresh", "incremental": "incremental"}.get(mode, mode)
+    st.caption(f"🔄 PD data: **{local_dt}** ({mode_label})")
+
+
 def render_pd_file_warnings(pd_status, location="main"):
     """Render warnings for missing or stale Pipedrive data files.
 
@@ -842,6 +874,7 @@ def main():
         st.markdown("---")
 
         render_pd_file_warnings(pd_status, location="sidebar")
+        render_pd_refresh_status()
 
         st.markdown('<div class="section-header">New Analysis</div>', unsafe_allow_html=True)
 
