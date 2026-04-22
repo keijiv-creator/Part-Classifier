@@ -195,6 +195,10 @@ router.post(
             stderrText += text;
             appendLogs(text.split("\n").filter(Boolean).map((l: string) => `[stderr] ${l}`));
           });
+          proc.on("error", (spawnErr: Error) => {
+            stderrText += spawnErr.message;
+            resolve(1);
+          });
           proc.on("close", (code: number | null) => resolve(code ?? 1));
         });
 
