@@ -866,6 +866,8 @@ def main():
         st.session_state.run_label = None
     if "runs" not in st.session_state:
         st.session_state.runs = load_runs()
+    if "pd_refresh_result" not in st.session_state:
+        st.session_state.pd_refresh_result = None
 
     pd_status = check_pipedrive_files()
 
@@ -875,6 +877,59 @@ def main():
 
         render_pd_file_warnings(pd_status, location="sidebar")
         render_pd_refresh_status()
+
+        if os.environ.get("PIPEDRIVE_API_KEY"):
+            st.markdown('<div class="section-header">Pipedrive Data</div>', unsafe_allow_html=True)
+
+            if st.button("🔄 Refresh Pipedrive Data", use_container_width=True):
+                refresh_script = os.path.join(SCRIPT_DIR, "refresh_pd_data.py")
+                with st.spinner("Refreshing Pipedrive data…"):
+                    proc = subprocess.run(
+                        [sys.executable, refresh_script],
+                        capture_output=True, text=True, cwd=SCRIPT_DIR,
+                    )
+                if proc.returncode == 0:
+                    parts_count = 0
+                    deals_count = 0
+                    try:
+                        cache_path = os.path.join(DATA_DIR, "pd_cache.json")
+                        if os.path.exists(cache_path):
+                            with open(cache_path) as _f:
+                                parts_count = len(json.load(_f))
+                    except Exception:
+                        pass
+                    try:
+                        deals_path = os.path.join(DATA_DIR, "pd_deals_export.json")
+                        if os.path.exists(deals_path):
+                            with open(deals_path) as _f:
+                                deals_count = len(json.load(_f))
+                    except Exception:
+                        pass
+                    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    st.session_state.pd_refresh_result = {
+                        "ok": True,
+                        "parts": parts_count,
+                        "deals": deals_count,
+                        "ts": ts,
+                    }
+                else:
+                    st.session_state.pd_refresh_result = {
+                        "ok": False,
+                        "error": proc.stderr.strip() or proc.stdout.strip() or "Unknown error",
+                    }
+                st.rerun()
+
+            res = st.session_state.pd_refresh_result
+            if res is not None:
+                if res["ok"]:
+                    st.success(
+                        f"Refreshed {res['parts']:,} parts & {res['deals']:,} deals\n\n"
+                        f"Last updated: {res['ts']}"
+                    )
+                else:
+                    st.error(f"Refresh failed:\n\n{res['error']}")
+
+            st.markdown("---")
 
         st.markdown('<div class="section-header">New Analysis</div>', unsafe_allow_html=True)
 
