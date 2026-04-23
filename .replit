@@ -34,6 +34,10 @@ args = "api-build"
 task = "workflow.run"
 args = "api-smoke"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "typecheck-api"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -66,6 +70,17 @@ isValidation = true
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd artifacts/api-server && node build.mjs && test -f dist/index.mjs && echo 'Build OK'; BUILD_RESULT=$?; if [ $BUILD_RESULT -ne 0 ]; then exit $BUILD_RESULT; fi; PORT=19284 node --enable-source-maps ./dist/index.mjs & SERVER_PID=$!; READY=0; for i in $(seq 1 10); do kill -0 $SERVER_PID 2>/dev/null || { echo \"Server exited early\"; exit 1; }; curl -sf --max-time 2 http://localhost:19284/api/healthz 2>/dev/null && READY=1 && break; sleep 1; done; if [ $READY -eq 0 ]; then echo \"Server did not become ready in 10s\"; kill $SERVER_PID 2>/dev/null; exit 1; fi; echo 'Health check passed'; kill $SERVER_PID 2>/dev/null; exit 0"
+
+[[workflows.workflow]]
+name = "typecheck-api"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsc --build lib/db lib/api-zod && cd artifacts/api-server && npx tsc --noEmit"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [agent]
 stack = "PNPM_WORKSPACE"
