@@ -223,10 +223,22 @@ router.post(
     const outputDir = "/tmp/analysis_output_" + Date.now();
     fs.mkdirSync(outputDir, { recursive: true });
 
-    const bookingPath = files.booking_file[0].path + ".xlsx";
-    fs.renameSync(files.booking_file[0].path, bookingPath);
-    const nationalPath = files.national_file[0].path + ".xlsx";
-    fs.renameSync(files.national_file[0].path, nationalPath);
+    const bookingOrigPath = files.booking_file[0].path;
+    const nationalOrigPath = files.national_file[0].path;
+    const bookingPath = bookingOrigPath + ".xlsx";
+    const nationalPath = nationalOrigPath + ".xlsx";
+    try {
+      fs.renameSync(bookingOrigPath, bookingPath);
+      fs.renameSync(nationalOrigPath, nationalPath);
+    } catch (renameErr: any) {
+      try { fs.rmSync(outputDir, { recursive: true, force: true }); } catch {}
+      try { fs.unlinkSync(bookingOrigPath); } catch {}
+      try { fs.unlinkSync(nationalOrigPath); } catch {}
+      try { fs.unlinkSync(bookingPath); } catch {}
+      try { fs.unlinkSync(nationalPath); } catch {}
+      res.status(500).json({ error: "Failed to prepare uploaded files: " + renameErr.message });
+      return;
+    }
     const jsonOutput = path.join(outputDir, "result.json");
 
     const args = [
@@ -466,6 +478,8 @@ router.post(
       } finally {
         try { fs.unlinkSync(bookingPath); } catch {}
         try { fs.unlinkSync(nationalPath); } catch {}
+        try { fs.unlinkSync(bookingOrigPath); } catch {}
+        try { fs.unlinkSync(nationalOrigPath); } catch {}
         try { fs.rmSync(outputDir, { recursive: true, force: true }); } catch {}
       }
     })();
