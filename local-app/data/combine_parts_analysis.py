@@ -10,6 +10,7 @@ import re
 import statistics
 import requests
 from collections import defaultdict, Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -749,13 +750,10 @@ def fetch_deal_details(deal_ids):
         print("  WARNING: No PIPEDRIVE_API_KEY set, skipping deal detail fetch")
         return {}
 
-    print(f"  Fetching details for {len(deal_ids)} Pipedrive deals...")
-    deal_details = {}
     unique_ids = list(set(deal_ids))
-    fetched = 0
-    errors = 0
+    print(f"  Fetching details for {len(unique_ids)} Pipedrive deals (5 parallel workers)...")
 
-    for deal_id in unique_ids:
+    def _fetch_one(deal_id):
         try:
             resp = requests.get(
                 f'{BASE_URL}/deals/{deal_id}',
@@ -776,7 +774,7 @@ def fetch_deal_details(deal_ids):
                     org = deal.get('org_id') or {}
                     raw_stage = deal.get('stage_id', '')
                     stage_label = PHASE_IDS.get(raw_stage, str(raw_stage) if raw_stage else '')
-                    deal_details[deal_id] = {
+                    return deal_id, {
                         'title': deal.get('title', ''),
                         'value': deal.get('value', ''),
                         'status': deal.get('status', ''),
@@ -798,22 +796,30 @@ def fetch_deal_details(deal_ids):
                         'p5_time': deal.get(PD_FIELDS['p5_time'], ''),
                         'part': deal.get(PD_FIELDS['part'], ''),
                         'customer_part': deal.get(PD_FIELDS['customer_part'], ''),
-                    }
-                    fetched += 1
-            else:
-                errors += 1
+                    }, False
+            return deal_id, None, resp.status_code != 200
         except Exception as e:
-            errors += 1
-            if errors <= 3:
-                print(f"  Error fetching deal {deal_id}: {e}")
+            return deal_id, None, True
 
-        if fetched % 25 == 0 and fetched > 0:
-            print(f"  Fetched {fetched}/{len(unique_ids)} deals...", end='\r')
+    deal_details = {}
+    fetched = 0
+    errors = 0
 
-        if fetched % 100 == 0 and fetched > 0:
-            time.sleep(0.5)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(_fetch_one, did): did for did in unique_ids}
+        for future in as_completed(futures):
+            did, detail, had_error = future.result()
+            if detail is not None:
+                deal_details[did] = detail
+                fetched += 1
+            else:
+                if had_error:
+                    errors += 1
+            done = fetched + errors
+            if done % 25 == 0 and done > 0:
+                print(f"  Fetched {fetched}/{len(unique_ids)} deals...")
 
-    print(f"\n  Fetched {fetched} deal details ({errors} errors)")
+    print(f"  Fetched {fetched} deal details ({errors} errors)")
     return deal_details
 
 
@@ -867,15 +873,10 @@ def search_pipedrive_deals(customer_parts):
         print("  WARNING: No PIPEDRIVE_API_KEY set, skipping Pipedrive search")
         return {}
 
-    print(f"  Searching Pipedrive for {len(customer_parts)} unique customer parts...")
-    pd_cache = {}
-    searched = 0
-    found = 0
-    errors = 0
+    valid_parts = [p for p in customer_parts if p and p != 'NONE']
+    print(f"  Searching Pipedrive for {len(valid_parts)} unique customer parts (5 parallel workers)...")
 
-    for cust_part in customer_parts:
-        if not cust_part or cust_part == 'NONE':
-            continue
+    def _search_one(cust_part):
         try:
             resp = requests.get(
                 f'{BASE_URL}/deals/search',
@@ -918,25 +919,32 @@ def search_pipedrive_deals(customer_parts):
                             deal_data = detail_resp.json().get('data', {})
                             deal_cust_part = str(deal_data.get(PD_FIELDS['customer_part'], '') or '').strip().upper()
                             if deal_cust_part == cust_part:
-                                pd_cache[cust_part] = deal_id
-                                found += 1
-                                break
+                                return cust_part, deal_id, False
                     except Exception:
                         pass
+                return cust_part, None, False
             else:
-                errors += 1
-
-            searched += 1
-            if searched % 50 == 0:
-                print(f"  Searched {searched}/{len(customer_parts)} parts ({found} found)...")
-                time.sleep(0.5)
-            elif searched % 10 == 0:
-                time.sleep(0.2)
-
+                return cust_part, None, True
         except Exception as e:
-            errors += 1
-            if errors <= 3:
-                print(f"  Error searching for {cust_part}: {e}")
+            return cust_part, None, True
+
+    pd_cache = {}
+    found = 0
+    errors = 0
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(_search_one, p): p for p in valid_parts}
+        searched = 0
+        for future in as_completed(futures):
+            cust_part, deal_id, had_error = future.result()
+            searched += 1
+            if deal_id is not None:
+                pd_cache[cust_part] = deal_id
+                found += 1
+            if had_error:
+                errors += 1
+            if searched % 50 == 0:
+                print(f"  Searched {searched}/{len(valid_parts)} parts ({found} found)...")
 
     print(f"  Pipedrive search complete: {found} matches found out of {searched} searched ({errors} errors)")
     return pd_cache
