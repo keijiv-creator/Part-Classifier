@@ -796,10 +796,10 @@ def fetch_deal_details(deal_ids):
                         'p5_time': deal.get(PD_FIELDS['p5_time'], ''),
                         'part': deal.get(PD_FIELDS['part'], ''),
                         'customer_part': deal.get(PD_FIELDS['customer_part'], ''),
-                    }, False
-            return deal_id, None, resp.status_code != 200
+                    }, False, None
+            return deal_id, None, resp.status_code != 200, None
         except Exception as e:
-            return deal_id, None, True
+            return deal_id, None, True, str(e)
 
     deal_details = {}
     fetched = 0
@@ -808,13 +808,14 @@ def fetch_deal_details(deal_ids):
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(_fetch_one, did): did for did in unique_ids}
         for future in as_completed(futures):
-            did, detail, had_error = future.result()
+            did, detail, had_error, err_msg = future.result()
             if detail is not None:
                 deal_details[did] = detail
                 fetched += 1
-            else:
-                if had_error:
-                    errors += 1
+            elif had_error:
+                errors += 1
+                if errors <= 3 and err_msg:
+                    print(f"  Error fetching deal {did}: {err_msg}")
             done = fetched + errors
             if done % 25 == 0 and done > 0:
                 print(f"  Fetched {fetched}/{len(unique_ids)} deals...")
@@ -919,14 +920,14 @@ def search_pipedrive_deals(customer_parts):
                             deal_data = detail_resp.json().get('data', {})
                             deal_cust_part = str(deal_data.get(PD_FIELDS['customer_part'], '') or '').strip().upper()
                             if deal_cust_part == cust_part:
-                                return cust_part, deal_id, False
+                                return cust_part, deal_id, False, None
                     except Exception:
                         pass
-                return cust_part, None, False
+                return cust_part, None, False, None
             else:
-                return cust_part, None, True
+                return cust_part, None, True, None
         except Exception as e:
-            return cust_part, None, True
+            return cust_part, None, True, str(e)
 
     pd_cache = {}
     found = 0
@@ -936,13 +937,15 @@ def search_pipedrive_deals(customer_parts):
         futures = {executor.submit(_search_one, p): p for p in valid_parts}
         searched = 0
         for future in as_completed(futures):
-            cust_part, deal_id, had_error = future.result()
+            cust_part, deal_id, had_error, err_msg = future.result()
             searched += 1
             if deal_id is not None:
                 pd_cache[cust_part] = deal_id
                 found += 1
             if had_error:
                 errors += 1
+                if errors <= 3 and err_msg:
+                    print(f"  Error searching for {cust_part}: {err_msg}")
             if searched % 50 == 0:
                 print(f"  Searched {searched}/{len(valid_parts)} parts ({found} found)...")
 
