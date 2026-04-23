@@ -487,7 +487,8 @@ router.post(
 );
 
 router.get("/analysis/jobs/:jobId", (req: Request, res: Response) => {
-  const job = jobs.get(req.params.jobId);
+  const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+  const job = jobs.get(jobId);
   if (!job) {
     res.status(404).json({ error: "Job not found" });
     return;
