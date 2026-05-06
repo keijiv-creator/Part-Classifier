@@ -1,6 +1,66 @@
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+try:
+    from python_calamine import CalamineWorkbook
+    _HAS_CALAMINE = True
+except ImportError:
+    _HAS_CALAMINE = False
+
+import datetime as _dt
+
+
+def _normalize_calamine(v):
+    """Normalize a calamine cell value to match openpyxl semantics so the
+    rest of the pipeline behaves identically regardless of backend.
+
+    - empty string -> None (openpyxl returns None for empty cells)
+    - datetime.date -> datetime.datetime (openpyxl always returns datetime;
+      downstream comparisons assume datetime, mixing them raises TypeError
+      and silently breaks the Repeat classification)
+    - integer-valued float -> int (calamine reads numeric cells as float;
+      str(100008154.0) -> '100008154.0' corrupts part-id keys used for
+      joining/landmark matching)
+    """
+    if v == '':
+        return None
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, _dt.datetime):
+        return v
+    if isinstance(v, _dt.date):
+        return _dt.datetime(v.year, v.month, v.day)
+    if isinstance(v, float) and v.is_integer() and abs(v) < 1e16:
+        return int(v)
+    return v
+
+
+def fast_read_xlsx(path):
+    """Read first sheet of xlsx as (headers, rows). Uses python-calamine
+    when available (~30x faster than openpyxl for large sheets), with a
+    fallback to openpyxl read_only mode. Cell values are normalized so the
+    output shape matches openpyxl's behaviour regardless of backend."""
+    if _HAS_CALAMINE:
+        wb = CalamineWorkbook.from_path(path)
+        ws = wb.get_sheet_by_index(0)
+        all_rows = ws.to_python()
+        if not all_rows:
+            return [], []
+        headers = [None if h == '' else h for h in all_rows[0]]
+        rows = [[_normalize_calamine(v) for v in r] for r in all_rows[1:]]
+        return headers, rows
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb.active
+    headers, rows = None, []
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            headers = list(row)
+            continue
+        rows.append(list(row))
+    wb.close()
+    return headers or [], rows
+
+
 import csv
 import os
 import sys
@@ -178,16 +238,7 @@ def rows_to_sheet_dict(headers, rows):
 
 def generate_natman_bookings(dev_booking_path, output_dir):
     print("  Reading Development Booking file...")
-    wb = openpyxl.load_workbook(dev_booking_path, read_only=True, data_only=True)
-    ws = wb.active
-    raw_headers = None
-    raw_rows = []
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0:
-            raw_headers = list(row)
-            continue
-        raw_rows.append(list(row))
-    wb.close()
+    raw_headers, raw_rows = fast_read_xlsx(dev_booking_path)
     print(f"  Loaded {len(raw_rows):,} booking rows")
 
     hi = {str(h).strip(): idx for idx, h in enumerate(raw_headers) if h}
@@ -373,14 +424,16 @@ def generate_natman_bookings(dev_booking_path, output_dir):
 
     def write_sheet_fast(ws, headers, data_rows, formats=None):
         write_header(ws, headers)
+        format_cols = [(c, fmt) for c, fmt in enumerate(formats or [], 1) if fmt]
+        row_idx = 1  # header row already written
         for row_data in data_rows:
-            cleaned = [clean_val(v) for v in row_data]
-            ws.append(cleaned)
-            if formats:
-                row_idx = ws.max_row
-                for c, fmt in enumerate(formats, 1):
-                    if fmt:
-                        ws.cell(row=row_idx, column=c).number_format = fmt
+            ws.append([clean_val(v) for v in row_data])
+            row_idx += 1
+            if format_cols:
+                # Use explicit row_idx counter; ws.max_row is O(n) per call
+                # which makes this loop O(n²) for large sheets.
+                for c, fmt in format_cols:
+                    ws.cell(row=row_idx, column=c).number_format = fmt
 
     # BOOKING_HEADERS_DISPLAY column order:
     # 1:Database, 2:Order Date, 3:Sales Order No, 4:So Status, 5:Quote No,
@@ -499,15 +552,7 @@ def generate_pdsync(consolidated_rows, pd_cache, output_dir):
 
 def transform_raw_data(input_file, org_id_map):
     print(f"  Reading raw data from {os.path.basename(input_file)}...")
-    src = openpyxl.load_workbook(input_file, data_only=True, read_only=True)
-    ws = src.active
-    headers, rows = None, []
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0:
-            headers = list(row)
-            continue
-        rows.append(list(row))
-    src.close()
+    headers, rows = fast_read_xlsx(input_file)
     print(f"  Loaded {len(rows):,} rows")
 
     ci = {h: idx for idx, h in enumerate(headers)}

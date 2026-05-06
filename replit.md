@@ -52,7 +52,7 @@ pnpm workspace monorepo using TypeScript. Contains a Parts Analysis Dashboard th
 
 ## Python Analysis Script
 
-Located at `scripts/src/combine_parts_analysis.py`. Accepts two raw xlsx files directly:
+Located at `scripts/src/combine_parts_analysis.py` (mirror copy at `local-app/data/combine_parts_analysis.py` used by the local Streamlit app — keep both in sync). Accepts two raw xlsx files directly:
 - **National QuoteData**: Raw quote export (~130 columns, quote/part/customer data)
 - **Development Booking**: Raw booking data (19 columns, sales orders)
 
@@ -96,6 +96,11 @@ Located at `scripts/src/combine_parts_analysis.py`. Accepts two raw xlsx files d
 - `scripts/src/org_ids.csv` — 143 org ID mappings
 - `scripts/src/pd_cache.json` — customer_part → deal_id mapping (6,893 entries)
 - `scripts/src/pd_deals_export.json` — full Pipedrive deal details (13,805 deals)
+
+### Performance notes
+- xlsx reads use `python-calamine` (~30× faster than openpyxl for large sheets) with an openpyxl fallback (`fast_read_xlsx` helper). On the 27 MB / 57k-row National export this drops the read from ~32s to ~1s.
+- `write_sheet_fast` (Natman_Bookings) tracks an explicit row counter — never call `ws.max_row` inside a per-row loop, openpyxl recomputes it as O(n) which made the MAIN sheet write O(n²) (200s+ on 49k rows).
+- End-to-end run on the 27 MB sample: ~25s (was 5+ minutes).
 
 ## Key Commands
 
