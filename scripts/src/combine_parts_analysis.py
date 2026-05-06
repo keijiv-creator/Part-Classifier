@@ -152,6 +152,30 @@ def load_all_sheets(filepath):
     return result
 
 
+def rows_to_sheet_dict(headers, rows):
+    """Convert in-memory headers + row tuples to the dashboard sheet dict format.
+
+    Produces the same shape as load_all_sheets() — date values formatted as
+    YYYY-MM-DD strings, None as empty string, all other values stringified —
+    but without the round-trip through openpyxl read.
+    """
+    norm_headers = [str(h).strip() if h else f'COL_{idx}' for idx, h in enumerate(headers)]
+    out_rows = []
+    for row in rows:
+        d = {}
+        for idx, h in enumerate(norm_headers):
+            val = row[idx] if idx < len(row) else None
+            if hasattr(val, 'strftime'):
+                val = val.strftime('%Y-%m-%d')
+            elif val is not None:
+                val = str(val)
+            else:
+                val = ''
+            d[h] = val
+        out_rows.append(d)
+    return {'headers': norm_headers, 'rows': out_rows}
+
+
 def generate_natman_bookings(dev_booking_path, output_dir):
     print("  Reading Development Booking file...")
     wb = openpyxl.load_workbook(dev_booking_path, read_only=True, data_only=True)
@@ -414,7 +438,14 @@ def generate_natman_bookings(dev_booking_path, output_dir):
             'quote_no': info['quote_no'],
         }
 
-    return natman_path, landmark_map
+    inmem_sheets = {
+        'MAIN': (BOOKING_HEADERS_DISPLAY, main_rows),
+        'UNIQUE': (unique_headers, unique_rows),
+        'TOTALS (By SO)': (totals_headers, totals_rows),
+        'LANDMARK': (landmark_headers, landmark_rows),
+    }
+
+    return natman_path, landmark_map, inmem_sheets
 
 
 def generate_pdsync(consolidated_rows, pd_cache, output_dir):
@@ -432,6 +463,7 @@ def generate_pdsync(consolidated_rows, pd_cache, output_dir):
     ]
     write_header(ws, pdsync_headers)
 
+    pdsync_rows_inmem = []
     for idx, cr in enumerate(consolidated_rows, 2):
         cust_part = str(cr['cust_part']).strip().upper() if cr['cust_part'] else ''
         pd_id = pd_cache.get(cust_part)
@@ -444,7 +476,7 @@ def generate_pdsync(consolidated_rows, pd_cache, output_dir):
             skip_reason = 'No existing PD match; candidate for new deal creation'
             would_update = 'No'
 
-        write_row(ws, idx, [
+        row_data = [
             pd_id, '', cr.get('org_id', ''), cr.get('name', ''),
             cr.get('cust_part', ''), '', cr.get('phase_label', ''),
             cr.get('mapped_status', ''), cr.get('mapped_probability', ''),
@@ -452,11 +484,17 @@ def generate_pdsync(consolidated_rows, pd_cache, output_dir):
             cr.get('mapped_pd_p1_time', ''), cr.get('mapped_pd_p2_time', ''),
             '', cr.get('mapped_pd_p4_time', ''), cr.get('mapped_pd_p5_time', ''),
             cr.get('quote_number', ''), would_update, 'Yes', skip_reason
-        ])
+        ]
+        write_row(ws, idx, row_data)
+        pdsync_rows_inmem.append(row_data)
 
     wb.save(pdsync_path)
     print(f"  Saved PDSync: {pdsync_path}")
-    return pdsync_path
+
+    inmem_sheets = {
+        'PD Upload Preview': (pdsync_headers, pdsync_rows_inmem),
+    }
+    return pdsync_path, inmem_sheets
 
 
 def transform_raw_data(input_file, org_id_map):
@@ -1012,7 +1050,7 @@ def main(cli_args=None):
 
     print(f"\n[1/7] Processing Development Booking...")
     print(f"  Input: {os.path.basename(booking_file)}")
-    natman_path, landmark = generate_natman_bookings(booking_file, OUTPUT_DIR)
+    natman_path, landmark, natman_inmem = generate_natman_bookings(booking_file, OUTPUT_DIR)
 
     print(f"\n[2/7] Loading reference data...")
     bundled_org_ids = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'org_ids.csv')
@@ -1047,7 +1085,7 @@ def main(cli_args=None):
     matched_rows, unmatched_rows = match_with_pd_cache(consolidated_rows, pd_cache)
 
     print(f"\n[5/7] Generating PDSync output...")
-    pdsync_path = generate_pdsync(consolidated_rows, pd_cache, OUTPUT_DIR)
+    pdsync_path, pdsync_inmem = generate_pdsync(consolidated_rows, pd_cache, OUTPUT_DIR)
 
     print(f"\n[6/7] Pipedrive deal detail enrichment...")
     deal_details = {}
@@ -1313,18 +1351,25 @@ def main(cli_args=None):
     print(f"{'=' * 60}")
 
     MAX_SOURCE_ROWS = 5000
-    print("  Loading generated output files for dashboard viewing...")
-    natman_sheets = load_all_sheets(natman_path)
-    for sn, sd in natman_sheets.items():
-        total = len(sd['rows'])
+    print("  Building dashboard sheet data from memory (no xlsx re-read)...")
+    natman_sheets = {}
+    for sn, (hdrs, rows) in natman_inmem.items():
+        total = len(rows)
+        capped_rows = rows[:MAX_SOURCE_ROWS] if total > MAX_SOURCE_ROWS else rows
+        natman_sheets[sn] = rows_to_sheet_dict(hdrs, capped_rows)
         if total > MAX_SOURCE_ROWS:
-            sd['rows'] = sd['rows'][:MAX_SOURCE_ROWS]
             print(f"    Natman_Bookings/{sn}: {total:,} rows (capped to {MAX_SOURCE_ROWS:,} for display)")
         else:
             print(f"    Natman_Bookings/{sn}: {total:,} rows")
-    pdsync_sheets = load_all_sheets(pdsync_path)
-    for sn, sd in pdsync_sheets.items():
-        print(f"    PDSync/{sn}: {len(sd['rows']):,} rows")
+    pdsync_sheets = {}
+    for sn, (hdrs, rows) in pdsync_inmem.items():
+        total = len(rows)
+        capped_rows = rows[:MAX_SOURCE_ROWS] if total > MAX_SOURCE_ROWS else rows
+        pdsync_sheets[sn] = rows_to_sheet_dict(hdrs, capped_rows)
+        if total > MAX_SOURCE_ROWS:
+            print(f"    PDSync/{sn}: {total:,} rows (capped to {MAX_SOURCE_ROWS:,} for display)")
+        else:
+            print(f"    PDSync/{sn}: {total:,} rows")
 
     new_deals_data = []
     for cr in unmatched_rows:

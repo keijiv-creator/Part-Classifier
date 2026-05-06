@@ -261,6 +261,9 @@ router.post(
 
     res.json({ jobId });
 
+    let cachedPrevRunId: number | null = null;
+    let cachedPrevParts: any[] | null = null;
+
     (async () => {
       try {
         try {
@@ -270,10 +273,11 @@ router.post(
             .limit(1);
 
           if (latestRuns.length > 0) {
-            const prevParts = await db.select().from(runPartsTable).where(eq(runPartsTable.runId, latestRuns[0].id));
-            if (prevParts.length > 0) {
+            cachedPrevRunId = latestRuns[0].id;
+            cachedPrevParts = await db.select().from(runPartsTable).where(eq(runPartsTable.runId, cachedPrevRunId));
+            if (cachedPrevParts.length > 0) {
               const prevRunJsonPath = path.join(outputDir, "prev_run.json");
-              fs.writeFileSync(prevRunJsonPath, JSON.stringify(prevParts));
+              fs.writeFileSync(prevRunJsonPath, JSON.stringify(cachedPrevParts));
               args.push("--previous-run-json", prevRunJsonPath);
             }
           }
@@ -407,9 +411,13 @@ router.post(
           }
 
           const BATCH_SIZE = 500;
+          const insertBatches: Promise<unknown>[] = [];
           for (let i = 0; i < partRows.length; i += BATCH_SIZE) {
-            await db.insert(runPartsTable).values(partRows.slice(i, i + BATCH_SIZE));
+            insertBatches.push(
+              db.insert(runPartsTable).values(partRows.slice(i, i + BATCH_SIZE))
+            );
           }
+          await Promise.all(insertBatches);
         } catch (dbErr: any) {
           console.error("DB persistence error (non-fatal):", dbErr.message);
           jsonData.dbPersistenceWarning = "Run data could not be saved to history: " + dbErr.message;
@@ -417,29 +425,19 @@ router.post(
         }
 
         let diff = null;
-        if (runId) {
+        if (runId && cachedPrevRunId && cachedPrevParts && cachedPrevParts.length > 0) {
           try {
-            const previousRuns = await db.select({ id: runsTable.id })
-              .from(runsTable)
-              .where(sql`${runsTable.id} < ${runId}`)
-              .orderBy(desc(runsTable.id))
-              .limit(1);
+            const currParts = await db.select().from(runPartsTable).where(eq(runPartsTable.runId, runId));
 
-            if (previousRuns.length > 0) {
-              const prevRunId = previousRuns[0].id;
-              const prevParts = await db.select().from(runPartsTable).where(eq(runPartsTable.runId, prevRunId));
-              const currParts = await db.select().from(runPartsTable).where(eq(runPartsTable.runId, runId));
+            const newDealsDiff = computeDiff(currParts, cachedPrevParts, "new_deals");
+            const pdInfoDiff = computeDiff(currParts, cachedPrevParts, "pd_info");
 
-              const newDealsDiff = computeDiff(currParts, prevParts, "new_deals");
-              const pdInfoDiff = computeDiff(currParts, prevParts, "pd_info");
-
-              diff = {
-                previousRunId: prevRunId,
-                currentRunId: runId,
-                newDeals: newDealsDiff,
-                pdInfo: pdInfoDiff,
-              };
-            }
+            diff = {
+              previousRunId: cachedPrevRunId,
+              currentRunId: runId,
+              newDeals: newDealsDiff,
+              pdInfo: pdInfoDiff,
+            };
           } catch (diffErr: any) {
             console.error("Diff computation error (non-fatal):", diffErr.message);
           }
