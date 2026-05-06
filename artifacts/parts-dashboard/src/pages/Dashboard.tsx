@@ -834,7 +834,16 @@ export default function Dashboard() {
               return;
             }
             consecutiveFailures = 0;
-            const pollData = await pollResp.json();
+            const pollText = await pollResp.text();
+            if (!pollText) {
+              pollRef.current = setTimeout(doPoll, 3000);
+              return;
+            }
+            let pollData: any;
+            try { pollData = JSON.parse(pollText); } catch {
+              pollRef.current = setTimeout(doPoll, 3000);
+              return;
+            }
             if (pollData.logs?.length) {
               setJobLogs(pollData.logs);
               setProgress(Math.min(10 + Math.floor(pollData.logs.length * 1.5), 90));
@@ -1048,11 +1057,21 @@ export default function Dashboard() {
       });
 
       if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || "Analysis failed");
+        const text = await resp.text();
+        let errMsg = `Analysis failed (HTTP ${resp.status})`;
+        if (text) {
+          try { errMsg = JSON.parse(text).error || errMsg; } catch { errMsg = text.slice(0, 200) || errMsg; }
+        } else if (resp.status === 502 || resp.status === 504) {
+          errMsg = `API server unreachable (HTTP ${resp.status}). The backend may be restarting — try again in a few seconds.`;
+        }
+        throw new Error(errMsg);
       }
 
-      const { jobId } = await resp.json();
+      const text = await resp.text();
+      if (!text) throw new Error("Empty response from server (proxy or backend may be down)");
+      let parsed: any;
+      try { parsed = JSON.parse(text); } catch { throw new Error("Server returned invalid JSON: " + text.slice(0, 200)); }
+      const { jobId } = parsed;
       if (!jobId) throw new Error("No job ID returned from server");
 
       sessionStorage.setItem("pendingJobId", jobId);
