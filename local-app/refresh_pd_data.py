@@ -218,8 +218,66 @@ def merge_cache(existing_cache, new_deals):
     return existing_cache
 
 
+def _build_export_entry(deal):
+    """Extract the same fields as cpa.fetch_deal_details from a raw deal dict.
+
+    The paginated /deals endpoint returns full deal objects including all custom
+    fields, so we can build the export entry directly without a second API call.
+    """
+    org = deal.get('org_id') or {}
+    raw_stage = deal.get('stage_id', '')
+    stage_label = cpa.PHASE_IDS.get(raw_stage, str(raw_stage) if raw_stage else '')
+    return {
+        'title': deal.get('title', ''),
+        'value': deal.get('value', ''),
+        'status': deal.get('status', ''),
+        'won_time': deal.get('won_time', ''),
+        'org_name': org.get('name', '') if isinstance(org, dict) else '',
+        'org_id': org.get('value', '') if isinstance(org, dict) else '',
+        'stage_id': stage_label,
+        'label': cpa.translate_field('label', deal.get('label', '')),
+        'platform_company': cpa.translate_field(PD_FIELDS['platform_company'], deal.get(PD_FIELDS['platform_company'], '')),
+        'deal_type': cpa.translate_field(PD_FIELDS['deal_type'], deal.get(PD_FIELDS['deal_type'], '')),
+        'mfg_type': cpa.translate_field(PD_FIELDS['mfg_type'], deal.get(PD_FIELDS['mfg_type'], '')),
+        'industry': cpa.translate_field(PD_FIELDS['industry'], deal.get(PD_FIELDS['industry'], '')),
+        'quote_number': deal.get(PD_FIELDS['quote_number'], ''),
+        'po_number': deal.get(PD_FIELDS['po_number'], ''),
+        'p1_time': deal.get(PD_FIELDS['p1_time'], ''),
+        'p2_time': deal.get(PD_FIELDS['p2_time'], ''),
+        'p3_time': deal.get(PD_FIELDS['p3_time'], ''),
+        'p4_time': deal.get(PD_FIELDS['p4_time'], ''),
+        'p5_time': deal.get(PD_FIELDS['p5_time'], ''),
+        'part': deal.get(PD_FIELDS['part'], ''),
+        'customer_part': deal.get(PD_FIELDS['customer_part'], ''),
+    }
+
+
+def build_deals_export_from_raw(deals):
+    """Build the deals export dict directly from already-fetched raw deal objects.
+
+    The /deals paginated endpoint already returns all custom fields, so there is
+    no need to make individual /deals/{id} calls just to retrieve the same data.
+    This eliminates thousands of redundant API calls during a refresh.
+    """
+    export = {}
+    for deal in deals:
+        deal_id = deal.get('id')
+        if deal_id:
+            export[str(deal_id)] = _build_export_entry(deal)
+    print(f"  Built export: {len(export)} deal entries (no extra API calls)")
+    return export
+
+
 def build_deals_export(deal_ids):
-    """Fetch detailed info for each deal ID and return the deals export dict."""
+    """Fetch detailed info for each deal ID via individual API calls.
+
+    Only used as a fallback for deal IDs that are in the cache but whose raw
+    data was not available from a bulk fetch (e.g. missing_from_export on an
+    incremental run after an older-style full refresh).
+    """
+    if not deal_ids:
+        return {}
+    print(f"  Fetching {len(deal_ids)} deal(s) individually (API fallback)...")
     deal_details = cpa.fetch_deal_details(deal_ids)
     return {str(k): v for k, v in deal_details.items()}
 
@@ -336,18 +394,20 @@ def main():
         print("\nMerging new deals into pd_cache.json...")
         pd_cache = merge_cache(existing_cache, new_deals)
 
-        # Identify deal IDs that need their details refreshed
-        changed_deal_ids = [
-            d.get('id') for d in new_deals if d.get('id') is not None
-        ]
-        # Also include any deal IDs now in the cache that aren't in the export
+        # Build export entries for changed/new deals directly from the already-
+        # fetched raw data — no extra API calls needed.
+        print(f"\nBuilding export entries for {len(new_deals)} changed/new deals from fetched data...")
+        new_export_entries = build_deals_export_from_raw(new_deals)
+
+        # Also cover any deal IDs now in the cache that weren't in the export
+        # (rare after a proper full refresh; falls back to individual API calls).
         cache_ids = set(pd_cache.values())
         export_ids = set(int(k) for k in existing_export.keys() if k.isdigit())
-        missing_from_export = cache_ids - export_ids
-        deal_ids_to_refresh = list(set(changed_deal_ids) | missing_from_export)
-
-        print(f"\nFetching details for {len(deal_ids_to_refresh)} changed/new deals...")
-        new_export_entries = build_deals_export(deal_ids_to_refresh)
+        new_export_ids = set(int(k) for k in new_export_entries.keys() if k.isdigit())
+        missing_from_export = cache_ids - export_ids - new_export_ids
+        if missing_from_export:
+            fallback_entries = build_deals_export(list(missing_from_export))
+            new_export_entries.update(fallback_entries)
 
         # Merge into existing export
         existing_export.update(new_export_entries)
@@ -369,9 +429,8 @@ def main():
         print("\nBuilding pd_cache.json...")
         pd_cache = build_cache(all_deals)
 
-        print("\nFetching deal details for pd_deals_export.json...")
-        deal_ids = list(set(pd_cache.values()))
-        pd_deals_export = build_deals_export(deal_ids)
+        print("\nBuilding pd_deals_export.json from fetched data...")
+        pd_deals_export = build_deals_export_from_raw(all_deals)
 
         print("\nWriting files to data/...")
         write_json(CACHE_FILE, pd_cache, 'pd_cache.json')
